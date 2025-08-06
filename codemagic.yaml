@@ -3,26 +3,35 @@ workflows:
     name: Moodle App Build for Android (.apk)
     max_build_duration: 60
     environment:
+      node: 20.18.0
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group  # <--- Asegúrate que este es el nombre que usaste en Codemagic
+        - keystore_group  # Asegúrate de que este grupo exista en Codemagic
     scripts:
+      - name: Establecer Node.js 20
+        script: |
+          echo "Verificando versión de Node.js"
+          node -v
+          npm -v
+
       - name: Instalar dependencias
         script: |
           npm install -g @ionic/cli cordova gulp
           npm ci || npm install
-          ionic build
+
       - name: Construir APK
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
           ionic cordova build android --prod --release --buildConfig=build.json
+
     artifacts:
-      - build/**/outputs/**/*.apk
-      - build/**/outputs/**/*.aab
-      - build/**/outputs/**/*.ipa
+      - platforms/android/app/build/outputs/**/*.apk
+      - platforms/android/app/build/outputs/**/*.aab
+      - platforms/android/app/build/outputs/**/*.ipa
+
     publishing:
       scripts:
         - name: Firmar APK
