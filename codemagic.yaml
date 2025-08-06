@@ -19,6 +19,6 @@ workflows:
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
-          ionic cordova build android --prod --release -- --packageType=apk
+          ionic cordova build android --prod --release --buildConfig=build.json
     artifacts:
       - platforms/android/app/build/outputs/apk/release/app-release.apk
