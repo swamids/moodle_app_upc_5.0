@@ -7,7 +7,7 @@ workflows:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       node: 20.18.0
-      java: 11
+      java: 17
     scripts:
       - name: Instalar dependencias
         script: |
