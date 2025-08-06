@@ -6,9 +6,8 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-      node: 20.18.0
-      java: 17
-
+      groups:
+        - keystore_group  # <--- Asegúrate que este es el nombre que usaste en Codemagic
     scripts:
       - name: Instalar dependencias
         script: |
@@ -21,4 +20,21 @@ workflows:
           ionic cordova platform add android
           ionic cordova build android --prod --release --buildConfig=build.json
     artifacts:
-      - platforms/android/app/build/outputs/apk/release/app-release.apk
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/*.ipa
+    publishing:
+      scripts:
+        - name: Firmar APK
+          script: |
+            echo $CM_KEYSTORE | base64 -d > release.keystore
+            jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+              -keystore release.keystore \
+              -storepass $CM_KEYSTORE_PASSWORD \
+              -keypass $CM_KEY_PASSWORD \
+              platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
+              $CM_KEY_ALIAS
+
+            zipalign -v 4 \
+              platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk \
+              platforms/android/app/build/outputs/apk/release/app-release.apk
