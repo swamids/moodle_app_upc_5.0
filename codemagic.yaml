@@ -9,8 +9,7 @@ workflows:
         APP_NAME: "Moodle UPC"
       node: 16.20.0
       java: 11
-      android_signing:
-        - keystore_reference
+      
     scripts:
       - name: Instalar dependencias
         script: |
