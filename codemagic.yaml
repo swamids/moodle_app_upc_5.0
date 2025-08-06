@@ -14,6 +14,9 @@ workflows:
           npm install -g @ionic/cli cordova gulp
           npm ci || npm install
           ionic build
+      - name: Crear plataforma Android
+        script: |
+          npx cap add android
       - name: Construir APK
         script: |
           npx cap sync android
