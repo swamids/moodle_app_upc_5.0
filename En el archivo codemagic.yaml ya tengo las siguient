@@ -11,7 +11,6 @@ workflows:
         APP_NAME: "Moodle UPC"
       node: 16.20.0
       java: 11
-      
     scripts:
       - name: Instalar dependencias
         script: |
