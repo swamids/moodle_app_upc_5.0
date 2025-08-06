@@ -2,8 +2,7 @@ workflows:
   build-android:
     name: Moodle App Build for Android
     max_build_duration: 60
-    instance_type: linux  # Cambiado aquí
-    environment:
+    environment:  # ← ya no está instance_type aquí
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
