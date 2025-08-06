@@ -11,9 +11,8 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
-          npm install
-          npm install -g @ionic/cli cordova
-          npm run ionic:build:before
+          npm install -g @ionic/cli cordova gulp
+          npm ci || npm install
           ionic build
       - name: Construir APK
         script: |
