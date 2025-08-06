@@ -8,7 +8,7 @@ workflows:
         APP_NAME: "Moodle UPC"
       node: 20.18.0
       java: 17
-      
+
     scripts:
       - name: Instalar dependencias
         script: |
@@ -17,6 +17,7 @@ workflows:
           ionic build
       - name: Construir APK
         script: |
+          ionic cordova platform rm android || true
           ionic cordova platform add android
           ionic cordova build android --prod --release -- --packageType=apk
     artifacts:
