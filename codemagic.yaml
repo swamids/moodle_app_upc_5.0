@@ -6,7 +6,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-      node: 16.20.0
+      node: 20.18.0
       java: 11
     scripts:
       - name: Instalar dependencias
