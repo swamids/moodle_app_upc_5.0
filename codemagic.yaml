@@ -1,6 +1,6 @@
 workflows:
   build-android:
-    name: Moodle App Build for Android
+    name: Moodle App Build for Android (Cordova)
     max_build_duration: 60
     environment:
       vars:
@@ -14,13 +14,9 @@ workflows:
           npm install -g @ionic/cli cordova gulp
           npm ci || npm install
           ionic build
-      - name: Crear plataforma Android
-        script: |
-          npx cap add android
       - name: Construir APK
         script: |
-          npx cap sync android
-          cd android
-          ./gradlew assembleRelease
+          ionic cordova platform add android
+          ionic cordova build android --prod --release
     artifacts:
-      - android/app/build/outputs/**/*.apk
+      - platforms/android/app/build/outputs/**/*.apk
