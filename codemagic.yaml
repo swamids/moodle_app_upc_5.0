@@ -4,13 +4,13 @@ workflows:
     max_build_duration: 60
 
     environment:
-      node: 20.18.0          # Requerido por Moodle App 5.0
-      java: 17               # Requerido por cordova-android 14
+      node: 20.18.0
+      java: 17
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group     # Debe contener las 4 variables CM_* mencionadas arriba
+        - keystore_group  # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
 
     scripts:
       - name: Instalar dependencias
@@ -19,16 +19,28 @@ workflows:
           npm ci || npm install
           ionic build
 
+      - name: Restaurar y verificar keystore
+        script: |
+          # Restaurar el keystore desde variable
+          printf "%s" "$CM_KEYSTORE" | base64 -d > release.keystore
+
+          echo "▶ Verificando store password..."
+          keytool -list -v -keystore release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
+
+          echo "▶ Verificando alias y key password..."
+          keytool -list -v \
+            -keystore release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -alias "$CM_KEY_ALIAS" \
+            -keypass "$CM_KEY_PASSWORD" >/dev/null
+
+          echo "✅ Keystore verificado correctamente."
+
       - name: Construir APK firmado (Gradle/Cordova)
         script: |
-          # Restaurar keystore ANTES del build (Gradle lo requiere)
-          echo "$CM_KEYSTORE" | base64 -d > release.keystore
-
-          # Preparar plataforma Android
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Build en modo release, forzando APK y pasando credenciales de firma
           ionic cordova build android --prod --release -- \
             --packageType=apk \
             --keystore=release.keystore \
