@@ -2,6 +2,7 @@ workflows:
   build-android:
     name: Moodle App Build for Android (.apk)
     max_build_duration: 60
+
     environment:
       node: 20.18.0
       java: 17
@@ -35,16 +36,40 @@ workflows:
 
           echo "✅ Keystore verificado correctamente."
 
-      - name: Construir APK firmado (Gradle/Cordova)
+      - name: Construir APK (unsigned)
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
-          ionic cordova build android --prod --release -- \
-            --packageType=apk \
-            --keystore=release.keystore \
-            --storePassword="$CM_KEYSTORE_PASSWORD" \
-            --alias="$CM_KEY_ALIAS" \
-            --password="$CM_KEY_PASSWORD"
+          # Forzar APK (no AAB) y NO pasar credenciales de firma a Gradle
+          ionic cordova build android --prod --release -- --packageType=apk
+
+      - name: Alinear y firmar APK con apksigner
+        script: |
+          UNSIGNED=platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=platforms/android/app/build/outputs/apk/release/app-release-aligned.apk
+          FINAL=platforms/android/app/build/outputs/apk/release/app-release.apk
+
+          if [ ! -f "$UNSIGNED" ]; then
+            echo "❌ No se encontró $UNSIGNED"
+            exit 1
+          fi
+
+          echo "▶ zipalign…"
+          zipalign -v 4 "$UNSIGNED" "$ALIGNED"
+
+          echo "▶ apksigner sign…"
+          apksigner sign \
+            --ks release.keystore \
+            --ks-key-alias "$CM_KEY_ALIAS" \
+            --ks-pass pass:"$CM_KEYSTORE_PASSWORD" \
+            --key-pass pass:"$CM_KEY_PASSWORD" \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          echo "▶ Verificando firma…"
+          apksigner verify --print-certs "$FINAL"
+
+          echo "✅ APK firmado: $FINAL"
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
