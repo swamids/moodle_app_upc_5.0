@@ -2,7 +2,6 @@ workflows:
   build-android:
     name: Moodle App Build for Android (.apk)
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
@@ -21,7 +20,7 @@ workflows:
 
       - name: Restaurar y verificar keystore
         script: |
-          # Restaurar el keystore desde variable
+          # Restaurar keystore desde la variable (base64)
           printf "%s" "$CM_KEYSTORE" | base64 -d > release.keystore
 
           echo "▶ Verificando store password..."
@@ -40,7 +39,6 @@ workflows:
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
-
           ionic cordova build android --prod --release -- \
             --packageType=apk \
             --keystore=release.keystore \
