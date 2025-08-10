@@ -19,29 +19,45 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Restaurar y verificar keystore
+      - name: Restaurar keystore a ruta temporal y verificar
         script: |
-          # Restaurar keystore desde la variable (base64)
-          printf "%s" "$CM_KEYSTORE" | base64 -d > release.keystore
+          # Restaurar el keystore en /tmp (fuera del repo) para que Gradle NO lo encuentre
+          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
 
           echo "▶ Verificando store password..."
-          keytool -list -v -keystore release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
+          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
 
           echo "▶ Verificando alias y key password..."
           keytool -list -v \
-            -keystore release.keystore \
+            -keystore /tmp/release.keystore \
             -storepass "$CM_KEYSTORE_PASSWORD" \
             -alias "$CM_KEY_ALIAS" \
             -keypass "$CM_KEY_PASSWORD" >/dev/null
 
-          echo "✅ Keystore verificado correctamente."
+          echo "✅ Keystore verificado correctamente en /tmp."
 
       - name: Construir APK (unsigned)
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
-          # Forzar APK (no AAB) y NO pasar credenciales de firma a Gradle
-          ionic cordova build android --prod --release -- --packageType=apk
+
+          # 1) Eliminar cualquier properties de firma que fuerce Gradle a firmar
+          rm -f platforms/android/release-signing.properties || true
+
+          # 2) Eliminar bloque signingConfigs y referencias a signingConfig release, si existieran
+          if [ -f platforms/android/app/build.gradle ]; then
+            echo "▶ Parchando build.gradle para desactivar firma en release…"
+            # Quitar todo el bloque signingConfigs { ... }
+            awk 'BEGIN{skip=0} /signingConfigs[[:space:]]*\{/ {skip=1} skip && /\}/ {skip=0; next} !skip {print}' \
+              platforms/android/app/build.gradle > platforms/android/app/build.gradle.nosign && mv platforms/android/app/build.gradle.nosign platforms/android/app/build.gradle
+            # Quitar líneas que referencien "signingConfig signingConfigs.release"
+            sed -i '' 's/signingConfig signingConfigs\.release//g' platforms/android/app/build.gradle || true
+          fi
+
+          # 3) Forzar a Gradle a NO cargar release-signing.properties
+          ionic cordova build android --prod --release -- \
+            --packageType=apk \
+            --gradleArg=-PcdvReleaseSigningPropertiesFile=
 
       - name: Alinear y firmar APK con apksigner
         script: |
@@ -50,7 +66,7 @@ workflows:
           FINAL=platforms/android/app/build/outputs/apk/release/app-release.apk
 
           if [ ! -f "$UNSIGNED" ]; then
-            echo "❌ No se encontró $UNSIGNED"
+            echo "❌ No se encontró $UNSIGNED (el build unsigned falló)."
             exit 1
           fi
 
@@ -59,7 +75,7 @@ workflows:
 
           echo "▶ apksigner sign…"
           apksigner sign \
-            --ks release.keystore \
+            --ks /tmp/release.keystore \
             --ks-key-alias "$CM_KEY_ALIAS" \
             --ks-pass pass:"$CM_KEYSTORE_PASSWORD" \
             --key-pass pass:"$CM_KEY_PASSWORD" \
