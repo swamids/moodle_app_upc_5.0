@@ -22,6 +22,7 @@ workflows:
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/splash.png ] || { echo "❌ Falta resources/splash.png"; exit 1; }
+          [ -f resources/android/drawable/ic_splash.xml ] || { echo "❌ Falta resources/android/drawable/ic_splash.xml"; exit 1; }
 
           # Adaptive icon requerido por cordova-res
           mkdir -p resources/android
@@ -37,12 +38,13 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          echo "▶ Verificando recursos del splash del sistema:"
-          ls -l platforms/android/app/src/main/res/drawable/ic_splash.xml || { echo "❌ Falta ic_splash.xml"; exit 1; }
-          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png || { echo "❌ Falta ic_splash_png.png"; exit 1; }
+          echo "▶ Verificando recursos copiados por config.xml:"
+          ls -l platforms/android/app/src/main/res/drawable/ic_splash.xml || { echo "❌ Falta ic_splash.xml en res/drawable"; exit 1; }
+          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png || { echo "❌ Falta ic_splash_png.png en res/drawable-nodpi"; exit 1; }
 
           echo "▶ Verificando AndroidManifest.xml:"
           grep -n "windowSplashScreenAnimatedIcon" platforms/android/app/src/main/AndroidManifest.xml || { echo "❌ Manifest sin windowSplashScreenAnimatedIcon"; exit 1; }
+          grep -n '@drawable/ic_splash' platforms/android/app/src/main/AndroidManifest.xml || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
 
       - name: Construir APK (DEBUG)
         script: |

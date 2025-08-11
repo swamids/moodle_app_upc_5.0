@@ -73,13 +73,8 @@
 
   <!-- ===== ANDROID ===== -->
   <platform name="android">
-    <!-- Icono base; cordova-res generará mipmap-* -->
+    <!-- Icono base -->
     <icon src="resources/icon.png" />
-
-    <!-- Splash del sistema (Android 12+) -->
-    <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-    <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
-    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
 
     <!-- Copiamos los recursos del splash del sistema durante 'prepare' -->
     <resource-file src="resources/android/drawable/ic_splash.xml" target="app/src/main/res/drawable/ic_splash.xml" />
@@ -88,7 +83,6 @@
     <!-- Firebase / otros -->
     <resource-file src="google-services.json" target="app/google-services.json" />
 
-    <!-- smallicon opcional -->
     <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
     <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
     <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
@@ -96,8 +90,15 @@
 
     <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
 
+    <!-- INYECCIÓN DIRECTA EN EL MANIFEST (solución definitiva) -->
     <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
-      <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
+      <application
+        android:allowBackup="false"
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:windowSplashScreenAnimatedIcon="@drawable/ic_splash"
+        android:windowSplashScreenBackground="#FFFFFF"
+        android:windowSplashScreenIconBackgroundColor="#FFFFFF" />
     </edit-config>
 
     <config-file parent="/manifest/application" target="AndroidManifest.xml">
