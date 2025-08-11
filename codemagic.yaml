@@ -1,94 +1,72 @@
 workflows:
-  build-android:
-    name: Moodle App Build for Android (.apk)
+  android-cordova-release:
+    name: Moodle App Android (Cordova, signed)
     max_build_duration: 60
+    instance_type: mac_mini
 
     environment:
-      node: 20.18.0
-      java: 17
+      node: 16.20.0
+      java: 11
       vars:
+        # Ajusta a tu id de paquete y nombre visible
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-      groups:
-        - keystore_group  # Secret vars: CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+      # No es necesario definir grupos si usas Code signing de Codemagic.
+      # Las variables CM_* llegan automáticamente desde Code signing.
+
+    cache:
+      cache_paths:
+        - ~/.npm
+        - ~/.gradle/caches
 
     scripts:
-      - name: Instalar dependencias
+      - name: Mostrar info de entorno
         script: |
-          npm install -g @ionic/cli cordova gulp cordova-res
-          npm ci || npm install
+          node -v
+          java -version
+          echo "Keystore path: $CM_KEYSTORE_PATH (debe existir si configuraste Code signing)"
+
+      - name: Instalar herramientas
+        script: |
+          npm ci
+          npm i -g @ionic/cli cordova
+
+      - name: Preparar proyecto Cordova
+        script: |
+          ionic repair || true
           ionic build
+          # Fuerza plataforma Android moderna (ajusta versión si tu proyecto lo requiere)
+          cordova platform remove android || true
+          cordova platform add android@12
 
-      - name: Restaurar keystore (root y /tmp) y verificar credenciales
+      - name: Aumentar memoria Gradle
         script: |
-          # Restaurar el keystore en /tmp y en la RAÍZ del repo para satisfacer app/build.gradle
-          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
-          printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
+          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
 
-          echo "▶ Verificando store password..."
-          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
-
-          echo "▶ Verificando alias y key password..."
-          keytool -list -v \
-            -keystore /tmp/release.keystore \
-            -storepass "$CM_KEYSTORE_PASSWORD" \
-            -alias "$CM_KEY_ALIAS" \
-            -keypass "$CM_KEY_PASSWORD" >/dev/null
-
-          echo "✅ Keystore verificado."
-
-      - name: Preparar recursos Android (adaptive icon)
+      - name: Configurar firma (Gradle)
         script: |
-          mkdir -p resources/android
-          if [ -f resources/icon.png ]; then
-            BASE=resources/icon.png
-          else
-            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/_base.png
-            BASE=resources/android/_base.png
-          fi
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-foreground.png >/dev/null
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-background.png  >/dev/null
-          echo "✅ Adaptive icon listo."
+          # Usamos las variables del Code signing de Codemagic
+          # Crea release-signing.properties que Gradle/cordova-android reconocen automáticamente.
+          cat > platforms/android/release-signing.properties <<EOF
+          storeFile=$CM_KEYSTORE_PATH
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          keyPassword=$CM_KEY_PASSWORD
+          EOF
+          echo "release-signing.properties creado."
 
-      - name: Platform add y (si aplica) reemplazo puntual de literales CM_KEY_* en app/build.gradle
+      - name: Construir APK Release firmado (Cordova)
         script: |
-          set -e
-          ionic cordova platform rm android || true
-          ionic cordova platform add android
-
-          GRADLE_FILE="platforms/android/app/build.gradle"
-          if [ ! -f "$GRADLE_FILE" ]; then
-            echo "❌ No se encontró $GRADLE_FILE"; exit 1
-          fi
-
-          echo "▶ Buscando literales 'CM_KEY_*' en $GRADLE_FILE…"
-          COUNT=$( (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | wc -l )
-          echo "Encontradas: $COUNT"
-
-          if [ "$COUNT" -gt 0 ]; then
-            echo "▶ Reemplazando literales por valores reales (enmascarados en logs)…"
-            # alias
-            perl -0777 -pe "s/(['\"])CM_KEY_ALIAS\\1/\$1$CM_KEY_ALIAS\$1/g" -i.bak "$GRADLE_FILE"
-            # store password
-            perl -0777 -pe "s/(['\"])CM_KEYSTORE_PASSWORD\\1/\$1$CM_KEYSTORE_PASSWORD\$1/g" -i "$GRADLE_FILE"
-            # key password
-            perl -0777 -pe "s/(['\"])CM_KEY_PASSWORD\\1/\$1$CM_KEY_PASSWORD\$1/g" -i "$GRADLE_FILE"
-            echo "▶ Verificando que ya no queden literales…"
-            LEFT=$( (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | wc -l )
-            echo "Restantes en app/build.gradle: $LEFT"
-            if [ "$LEFT" -ne 0 ]; then
-              echo "❌ Aún quedan literales. Mostrando primeras coincidencias y abortando:"
-              (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | head -n 50
-              exit 1
-            fi
-          else
-            echo "✅ No hay literales en app/build.gradle."
-          fi
-
-      - name: Construir APK firmado (Gradle/Cordova)
-        script: |
-          # Forzar APK (no AAB). app/build.gradle encontrará release.keystore en la raíz.
-          ionic cordova build android --prod --release -- --packageType=apk
+          # --packageType=apk para generar APK (no AAB) y que use la firma release
+          cordova build android --release --packageType=apk --verbose
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - "tucorreo@dominio.com"
+        notify:
+          success: true
+          failure: true
