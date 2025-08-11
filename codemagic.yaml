@@ -1,6 +1,6 @@
 workflows:
   build-android-debug:
-    name: Moodle App Build for Android (DEBUG - rápido para pruebas de marca)
+    name: Moodle App Build for Android (DEBUG - pruebas de marca)
     max_build_duration: 60
 
     environment:
@@ -17,7 +17,7 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Preparar recursos Android (icon y splash para cordova-res)
+      - name: Preparar recursos (icon y splash)
         script: |
           set -e
           if [ ! -f resources/icon.png ]; then
@@ -26,6 +26,13 @@ workflows:
           if [ ! -f resources/splash.png ]; then
             echo "❌ Falta resources/splash.png"; exit 1
           fi
+
+          # Adaptive icon requerido por cordova-res
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+
+          echo "▶ Generando assets con cordova-res (icon+splash)…"
           ionic cordova resources android --force --icon --splash || true
           echo "✅ cordova-res ejecutado."
 
@@ -35,12 +42,12 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Crear el drawable que usará el splash del sistema (@drawable/ic_splash)
+          # Drawable para el splash del sistema (@drawable/ic_splash)
           mkdir -p platforms/android/app/src/main/res/drawable-nodpi
           cp resources/splash.png platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png
 
-          echo "▶ Comprobando que exista el drawable:"
-          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png
+          echo "▶ Verificando drawable ic_splash:"
+          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png || { echo "❌ No se creó ic_splash.png"; exit 1; }
 
       - name: Construir APK (DEBUG)
         script: |
