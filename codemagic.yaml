@@ -24,7 +24,7 @@ workflows:
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
 
-          # Adaptive icon requerido por cordova-res
+          # Adaptive icon para que cordova-res no falle
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
@@ -32,7 +32,7 @@ workflows:
           ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android y validar splash del sistema
+      - name: Preparar plataforma Android y forzar splash del sistema
         script: |
           set -e
           ionic cordova platform rm android || true
@@ -44,28 +44,27 @@ workflows:
 
           MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
           echo "▶ Verificando AndroidManifest.xml…"
-          # Fallback: si Cordova no inyectó la preferencia, la forzamos
-          if ! grep -q 'windowSplashScreenAnimatedIcon' "$MANIFEST"; then
-            echo "⚠️  Manifest sin atributo; aplicando patch (Python)…"
-            cat > /tmp/patch_manifest.py << 'PYCODE'
-import io
-p = "platforms/android/app/src/main/AndroidManifest.xml"
-with io.open(p, "r", encoding="utf-8") as f:
-    s = f.read()
-if "windowSplashScreenAnimatedIcon" not in s:
-    s = s.replace(
-        "<application ",
-        '<application android:windowSplashScreenAnimatedIcon="@drawable/logo" '
-        'android:windowSplashScreenBackground="#FFFFFF" '
-        'android:windowSplashScreenIconBackgroundColor="#FFFFFF" ',
-        1
-    )
-    with io.open(p, "w", encoding="utf-8") as f:
-        f.write(s)
-print("patched")
-PYCODE
-            python3 /tmp/patch_manifest.py
-          fi
+
+          # Escribimos el script Python a archivo (sin heredocs)
+          PATCH="/tmp/patch_manifest.py"
+          rm -f "$PATCH"
+          printf '%s\n' \
+            'import io' \
+            'p = "platforms/android/app/src/main/AndroidManifest.xml"' \
+            'with io.open(p, "r", encoding="utf-8") as f:' \
+            '    s = f.read()' \
+            'if "windowSplashScreenAnimatedIcon" not in s:' \
+            '    s = s.replace(' \
+            '        "<application ", ' \
+            '        "<application android:windowSplashScreenAnimatedIcon=\\"@drawable/logo\\" android:windowSplashScreenBackground=\\"#FFFFFF\\" android:windowSplashScreenIconBackgroundColor=\\"#FFFFFF\\" ", ' \
+            '        1' \
+            '    )' \
+            '    with io.open(p, "w", encoding="utf-8") as f:' \
+            '        f.write(s)' \
+            'print("patched" if "windowSplashScreenAnimatedIcon" in s else "nochange")' \
+            > "$PATCH"
+
+          python3 "$PATCH"
 
           # Confirmación
           grep -n 'windowSplashScreenAnimatedIcon' "$MANIFEST" \

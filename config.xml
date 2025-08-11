@@ -77,7 +77,7 @@
     <!-- Icono base -->
     <icon src="resources/icon.png" />
 
-    <!-- Android 12+ Splash: preferencia apuntando a un recurso existente -->
+    <!-- Android 12+ Splash con PNG estático -->
     <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
     <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
     <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/logo" />
