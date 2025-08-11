@@ -21,10 +21,10 @@ workflows:
 
       - name: Restaurar keystore y crear release-signing.properties
         script: |
-          # 1) Restaurar el keystore en /tmp (fuera del repo)
+          # 1) Restaurar keystore en /tmp y en la RAÍZ del repo (CM_BUILD_DIR)
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
+          printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
-          # 2) Verificación rápida de credenciales
           echo "▶ Verificando store password..."
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
           echo "▶ Verificando alias y key password..."
@@ -35,10 +35,10 @@ workflows:
             -keypass "$CM_KEY_PASSWORD" >/dev/null
           echo "✅ Keystore verificado correctamente."
 
-          # 3) Crear el archivo de firma que Gradle entenderá
+          # 2) Crear el properties que usará Gradle/Cordova
           mkdir -p platforms/android
           cat > platforms/android/release-signing.properties <<EOF
-          storeFile=/tmp/release.keystore
+          storeFile=$CM_BUILD_DIR/release.keystore
           storePassword=$CM_KEYSTORE_PASSWORD
           keyAlias=$CM_KEY_ALIAS
           keyPassword=$CM_KEY_PASSWORD
@@ -49,7 +49,7 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Forzar APK (no AAB) y usar NUESTRO archivo de firma
+          # Forzar APK (no AAB) y decirle a Gradle qué properties usar
           ionic cordova build android --prod --release -- \
             --packageType=apk \
             --gradleArg=-PcdvReleaseSigningPropertiesFile=platforms/android/release-signing.properties
