@@ -46,11 +46,25 @@ workflows:
 
           MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
           echo "▶ Verificando AndroidManifest.xml…"
-          if ! grep -q 'windowSplashScreenAnimatedIcon' "$MANIFEST"; then
-            echo "⚠️  Manifest sin atributo; aplicando patch con perl…"
-            # OJO: escapar el @ como \@ para evitar interpolación de arrays en Perl
-            perl -0777 -i -pe 's/<application\b/<application android:windowSplashScreenAnimatedIcon="\\@drawable\/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" /s if $_ !~ /windowSplashScreenAnimatedIcon=/' "$MANIFEST"
-          fi
+
+          # Parche robusto con Python (inserta solo en la 1ª ocurrencia de <application )
+          python3 - << 'PY'
+import io, sys
+p = "platforms/android/app/src/main/AndroidManifest.xml"
+with open(p, "r", encoding="utf-8") as f:
+    s = f.read()
+if "windowSplashScreenAnimatedIcon" not in s:
+    s = s.replace(
+        "<application ",
+        '<application android:windowSplashScreenAnimatedIcon="@drawable/ic_splash" '
+        'android:windowSplashScreenBackground="#FFFFFF" '
+        'android:windowSplashScreenIconBackgroundColor="#FFFFFF" ',
+        1
+    )
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(s)
+print("patched" if "windowSplashScreenAnimatedIcon" in s else "nochange")
+PY
 
           # Confirmación
           grep -n 'windowSplashScreenAnimatedIcon' "$MANIFEST" \
