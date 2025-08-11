@@ -1,6 +1,6 @@
 workflows:
   build-android:
-    name: Moodle App Build for Android (.apk)
+    name: Moodle App Build for Android (APK unsigned)
     max_build_duration: 60
 
     environment:
@@ -9,8 +9,6 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-      groups:
-        - keystore_group  # Secret vars: CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
 
     scripts:
       - name: Instalar dependencias
@@ -19,38 +17,7 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Restaurar keystore y verificar
-        script: |
-          # Restaurar keystore en /tmp
-          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
-
-          echo "▶ Verificando store password..."
-          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
-
-          echo "▶ Verificando alias y key password..."
-          keytool -list -v \
-            -keystore /tmp/release.keystore \
-            -storepass "$CM_KEYSTORE_PASSWORD" \
-            -alias "$CM_KEY_ALIAS" \
-            -keypass "$CM_KEY_PASSWORD" >/dev/null
-
-          echo "✅ Keystore verificado."
-
-      - name: Preparar recursos Android (adaptive icon)
-        script: |
-          mkdir -p resources/android
-          # Usar resources/icon.png si existe, si no crear base mínima 1x1 y escalar
-          if [ -f resources/icon.png ]; then
-            BASE=resources/icon.png
-          else
-            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/_base.png
-            BASE=resources/android/_base.png
-          fi
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-foreground.png >/dev/null
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-background.png  >/dev/null
-          echo "✅ Adaptive icon listo."
-
-      - name: Preparar plataforma y desactivar firma de Gradle
+      - name: Preparar plataforma Android y desactivar firma de Gradle
         script: |
           set -e
           ionic cordova platform rm android || true
@@ -61,47 +28,13 @@ workflows:
             echo "❌ No se encontró $GRADLE_FILE"; exit 1
           fi
 
-          echo "▶ Neutralizando signing en $GRADLE_FILE (sin tocar llaves)…"
-          # 1) Renombrar 'signingConfigs' para que Gradle no lo use
+          echo "▶ Neutralizando signing en $GRADLE_FILE…"
           sed -i.bak 's/\bsigningConfigs\b/signingConfigs_DISABLED/g' "$GRADLE_FILE" || true
-          # 2) Neutralizar referencias a la config de release
           sed -i.bak 's/\bsigningConfig[[:space:]]\+signingConfigs\.release/\/\/ signing disabled/g' "$GRADLE_FILE" || true
-          # 3) Por si algún plugin usa variables literales CM_KEY_*, mostrarlas si existen
-          echo "▶ Chequeando literales CM_KEY_* restantes (solo informativo)…"
-          (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" platforms/android || true) | head -n 50
 
       - name: Construir APK (unsigned)
         script: |
-          # Forzar APK (no AAB) — sin firma en Gradle
           ionic cordova build android --prod --release -- --packageType=apk
-
-      - name: Alinear y firmar APK con apksigner
-        script: |
-          UNSIGNED=platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk
-          ALIGNED=platforms/android/app/build/outputs/apk/release/app-release-aligned.apk
-          FINAL=platforms/android/app/build/outputs/apk/release/app-release.apk
-
-          if [ ! -f "$UNSIGNED" ]; then
-            echo "❌ No se encontró $UNSIGNED (el build unsigned falló)."
-            exit 1
-          fi
-
-          echo "▶ zipalign…"
-          zipalign -v 4 "$UNSIGNED" "$ALIGNED"
-
-          echo "▶ apksigner sign…"
-          apksigner sign \
-            --ks /tmp/release.keystore \
-            --ks-key-alias "$CM_KEY_ALIAS" \
-            --ks-pass pass:"$CM_KEYSTORE_PASSWORD" \
-            --key-pass pass:"$CM_KEY_PASSWORD" \
-            --out "$FINAL" \
-            "$ALIGNED"
-
-          echo "▶ Verificando firma…"
-          apksigner verify --print-certs "$FINAL"
-
-          echo "✅ APK firmado: $FINAL"
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
