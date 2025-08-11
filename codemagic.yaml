@@ -10,7 +10,7 @@ workflows:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group  # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+        - keystore_group  # Debe contener: CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD (todas Secret)
 
     scripts:
       - name: Instalar dependencias
@@ -19,40 +19,52 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Restaurar keystore y crear release-signing.properties
+      - name: Restaurar y verificar keystore
         script: |
-          # 1) Restaurar keystore en /tmp y en la RAÍZ del repo (CM_BUILD_DIR)
+          # Restaurar keystore en /tmp y en la RAÍZ del repo (porque el build.gradle lo busca ahí)
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
           printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
           echo "▶ Verificando store password..."
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
+
           echo "▶ Verificando alias y key password..."
           keytool -list -v \
             -keystore /tmp/release.keystore \
             -storepass "$CM_KEYSTORE_PASSWORD" \
             -alias "$CM_KEY_ALIAS" \
             -keypass "$CM_KEY_PASSWORD" >/dev/null
+
           echo "✅ Keystore verificado correctamente."
 
-          # 2) Crear el properties que usará Gradle/Cordova
-          mkdir -p platforms/android
-          cat > platforms/android/release-signing.properties <<EOF
-          storeFile=$CM_BUILD_DIR/release.keystore
-          storePassword=$CM_KEYSTORE_PASSWORD
-          keyAlias=$CM_KEY_ALIAS
-          keyPassword=$CM_KEY_PASSWORD
-          EOF
-
-      - name: Construir APK firmado (Gradle/Cordova)
+      - name: Preparar plataforma y parchear build.gradle (firmas literales)
         script: |
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Forzar APK (no AAB) y decirle a Gradle qué properties usar
-          ionic cordova build android --prod --release -- \
-            --packageType=apk \
-            --gradleArg=-PcdvReleaseSigningPropertiesFile=platforms/android/release-signing.properties
+          GRADLE_FILE="platforms/android/app/build.gradle"
+
+          # Reemplazar SOLO los literales de firma por los valores reales
+          # (Codemagic enmascara valores Secret en los logs)
+          if [ -f "$GRADLE_FILE" ]; then
+            echo "▶ Parchando literales de firma en $GRADLE_FILE"
+            # keyAlias
+            sed -i.bak "s/'CM_KEY_ALIAS'/'$CM_KEY_ALIAS'/g; s/\"CM_KEY_ALIAS\"/\"$CM_KEY_ALIAS\"/g" "$GRADLE_FILE"
+            # storePassword
+            sed -i.bak "s/'CM_KEYSTORE_PASSWORD'/'$CM_KEYSTORE_PASSWORD'/g; s/\"CM_KEYSTORE_PASSWORD\"/\"$CM_KEYSTORE_PASSWORD\"/g" "$GRADLE_FILE"
+            # keyPassword
+            sed -i.bak "s/'CM_KEY_PASSWORD'/'$CM_KEY_PASSWORD'/g; s/\"CM_KEY_PASSWORD\"/\"$CM_KEY_PASSWORD\"/g" "$GRADLE_FILE"
+            # ruta del keystore (asegurar que apunta al de la raíz)
+            sed -i.bak "s#file('release.keystore')#file('../../release.keystore')#g" "$GRADLE_FILE" || true
+            sed -i.bak "s#file(\"release.keystore\")#file(\"../../release.keystore\")#g" "$GRADLE_FILE" || true
+          else
+            echo "❌ No se encontró $GRADLE_FILE"; exit 1
+          fi
+
+      - name: Construir APK firmado (Gradle/Cordova)
+        script: |
+          # Forzar APK (no AAB). El build.gradle ya tiene los valores reales de firma
+          ionic cordova build android --prod --release -- --packageType=apk
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
