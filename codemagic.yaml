@@ -2,7 +2,6 @@ workflows:
   build-android:
     name: Moodle App Build for Android (APK unsigned)
     max_build_duration: 60
-    instance_type: mac_mini
 
     environment:
       node: 20.18.0
@@ -14,7 +13,7 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
-          npm install -g @ionic/cli cordova cordova-res gulp
+          npm install -g @ionic/cli cordova gulp cordova-res
           npm ci || npm install
           ionic build
 
@@ -22,22 +21,18 @@ workflows:
         script: |
           set -e
           mkdir -p resources/android
-          # Si tienes resources/icon.png lo usamos; si no, generamos uno mínimo
+          # Si existe un icono base, úsalo; si no, crea un PNG mínimo
           if [ -f resources/icon.png ]; then
-            BASE=resources/icon.png
+            cp resources/icon.png resources/android/icon-background.png
+            cp resources/icon.png resources/android/icon-foreground.png
           else
             # PNG 1x1 en base64
-            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/_base.png
-            BASE=resources/android/_base.png
+            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/icon-background.png
+            cp resources/android/icon-background.png resources/android/icon-foreground.png
           fi
-
-          # En macOS está disponible 'sips'
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-background.png >/dev/null
-          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-foreground.png >/dev/null
-
-          # Generar resources para Android (si ya existen no falla)
+          # Generar assets (si algo falta, que no rompa el build)
           ionic cordova resources android --force || true
-          echo "✅ Adaptive icon listo."
+          echo "✅ Adaptive icon OK."
 
       - name: Preparar plataforma Android y desactivar firma de Gradle
         script: |
@@ -51,7 +46,6 @@ workflows:
           fi
 
           echo "▶ Neutralizando signing en $GRADLE_FILE…"
-          # Desactivar bloques y referencias de firma para que sea realmente unsigned
           sed -i.bak 's/\bsigningConfigs\b/signingConfigs_DISABLED/g' "$GRADLE_FILE" || true
           sed -i.bak 's/\bsigningConfig[[:space:]]\+signingConfigs\.release/\/\/ signing disabled/g' "$GRADLE_FILE" || true
 
