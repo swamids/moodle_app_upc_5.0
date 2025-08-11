@@ -21,7 +21,7 @@ workflows:
 
       - name: Restaurar keystore y crear release-signing.properties
         script: |
-          # Restaurar keystore en /tmp y en la RAÍZ del repo (algunos build.gradle lo buscan ahí)
+          # Restaurar keystore en /tmp y en la RAÍZ del repo (algunos gradle lo buscan ahí)
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
           printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
@@ -35,7 +35,7 @@ workflows:
             -alias "$CM_KEY_ALIAS" \
             -keypass "$CM_KEY_PASSWORD" >/dev/null
 
-          echo "✅ Keystore verificado correctamente."
+          echo "✅ Keystore verificado."
 
           # Archivo de firma para Gradle/Cordova
           mkdir -p platforms/android
@@ -46,6 +46,25 @@ workflows:
           keyPassword=$CM_KEY_PASSWORD
           EOF
 
+      - name: Preparar recursos Android (adaptive icon)
+        script: |
+          mkdir -p resources/android
+          # Si ya tienes resources/icon.png, úsalo como base; si no, creamos un PNG mínimo y lo escalamos
+          if [ -f resources/icon.png ]; then
+            BASE=resources/icon.png
+          else
+            echo "▶ Generando PNG base mínimo…"
+            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/_base.png
+            BASE=resources/android/_base.png
+          fi
+
+          # Usar 'sips' (macOS) para asegurar tamaño 1024x1024 que exige cordova-res
+          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-foreground.png >/dev/null
+          sips -s format png -Z 1024 "$BASE" --out resources/android/icon-background.png  >/dev/null
+
+          # Opcional: si tienes un color de marca, podríamos tintar el background aquí; por ahora, mismo arte
+          echo "✅ Adaptive icon listo (foreground/background)."
+
       - name: Preparar plataforma y (si aplica) limpiar literales de firma
         script: |
           set -e
@@ -53,7 +72,6 @@ workflows:
           ionic cordova platform add android
 
           ROOT="platforms/android"
-
           echo "▶ Buscando ocurrencias literales 'CM_KEY_*'…"
           COUNT=$( (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l )
           echo "Encontradas: $COUNT"
@@ -62,9 +80,7 @@ workflows:
             echo "▶ Se encontraron literales; aplicando reemplazos puntuales…"
             FILES=$(grep -RIl "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true)
             if [ -n "$FILES" ]; then
-              # Reemplazar cadenas literales por valores reales en los archivos detectados
               while IFS= read -r f; do
-                # Reemplazos simples y seguros con sed (comillas simples → comillas simples)
                 sed -i.bak "s/'CM_KEY_ALIAS'/'$CM_KEY_ALIAS'/g" "$f" || true
                 sed -i.bak "s/\"CM_KEY_ALIAS\"/\"$CM_KEY_ALIAS\"/g" "$f" || true
 
@@ -74,7 +90,6 @@ workflows:
                 sed -i.bak "s/'CM_KEY_PASSWORD'/'$CM_KEY_PASSWORD'/g" "$f" || true
                 sed -i.bak "s/\"CM_KEY_PASSWORD\"/\"$CM_KEY_PASSWORD\"/g" "$f" || true
 
-                # Asegurar que apunte al keystore de la raíz del repo
                 sed -i.bak "s#file('release.keystore')#file('../../release.keystore')#g" "$f" || true
                 sed -i.bak "s#file(\"release.keystore\")#file(\"../../release.keystore\")#g" "$f" || true
               done <<< "$FILES"
@@ -84,17 +99,17 @@ workflows:
             LEFT=$( (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l )
             echo "Restantes: $LEFT"
             if [ "$LEFT" -ne 0 ]; then
-              echo "❌ Aún quedan literales de firma. Abortando para revisar:"
+              echo "❌ Aún quedan literales de firma. Mostrando primeras coincidencias y abortando:"
               (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | head -n 50
               exit 1
             fi
           else
-            echo "✅ No hay literales de firma. Continuamos."
+            echo "✅ No hay literales de firma."
           fi
 
       - name: Construir APK firmado (Gradle/Cordova)
         script: |
-          # Forzar APK y decirle explícitamente a Gradle qué properties usar
+          # Forzar APK y pasar explíticamente el properties de firma
           ionic cordova build android --prod --release -- \
             --packageType=apk \
             --gradleArg=-PcdvReleaseSigningPropertiesFile=platforms/android/release-signing.properties
