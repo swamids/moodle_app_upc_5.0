@@ -73,15 +73,15 @@
 
     <!-- ===== ANDROID ===== -->
     <platform name="android">
-        <!-- Icono base; cordova-res generará mipmap-* -->
+        <!-- Icono base -->
         <icon src="resources/icon.png" />
 
-        <!-- Splash del sistema (Android 12+). Usamos un drawable propio -->
+        <!-- Splash del sistema (Android 12+) -->
         <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
         <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
         <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
 
-        <!-- Copiamos el splash al árbol de recursos de Android durante 'prepare' -->
+        <!-- Copiar TU splash al árbol de recursos de Android durante 'prepare' -->
         <resource-file src="resources/splash.png" target="app/src/main/res/drawable-nodpi/ic_splash.png" />
 
         <!-- Firebase / otros -->
@@ -109,7 +109,7 @@
         </config-file>
     </platform>
 
-    <!-- ===== iOS (opcional para mantener paridad) ===== -->
+    <!-- ===== iOS (opcional) ===== -->
     <platform name="ios">
         <icon src="resources/icon.png" />
         <splash src="resources/splash.png" />

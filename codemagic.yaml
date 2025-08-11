@@ -23,7 +23,7 @@ workflows:
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/splash.png ] || { echo "❌ Falta resources/splash.png"; exit 1; }
 
-          # Adaptive icon requerido por cordova-res
+          # Adaptive icon para que cordova-res no falle
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
@@ -38,7 +38,7 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          echo "▶ Comprobación del recurso ic_splash copiado por config.xml:"
+          echo "▶ Verificando que config.xml haya copiado ic_splash:"
           ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png || { echo "❌ No se encuentra ic_splash.png (revisa <resource-file> en config.xml)"; exit 1; }
 
       - name: Construir APK (DEBUG)
