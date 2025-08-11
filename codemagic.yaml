@@ -1,6 +1,6 @@
 workflows:
   build-android-debug:
-    name: Moodle App Build for Android (DEBUG - rápido para pruebas de marca)
+    name: Moodle App Build for Android (DEBUG - pruebas de marca)
     max_build_duration: 60
 
     environment:
@@ -13,28 +13,49 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
+          set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
           ionic build
 
-      - name: Preparar recursos Android (adaptive icon)
+      - name: Validar assets de marca (splash)
+        script: |
+          set -e
+          if [ ! -f resources/splash.png ]; then
+            echo "❌ No se encontró resources/splash.png"
+            exit 1
+          fi
+          # Validar dimensiones con Python (Pillow ya viene en la imagen base)
+          python3 - << 'PY'
+import sys
+from PIL import Image
+try:
+    im = Image.open("resources/splash.png")
+    w, h = im.size
+    print(f"▶ splash.png: {w}x{h}px")
+    if w < 2732 or h < 2732:
+        print("❌ El splash debe ser al menos 2732x2732 px (recomendado).", file=sys.stderr)
+        sys.exit(2)
+except Exception as e:
+    print(f"❌ Error leyendo resources/splash.png: {e}", file=sys.stderr)
+    sys.exit(3)
+PY
+
+      - name: Generar recursos Android (solo splash)
         script: |
           set -e
           mkdir -p resources/android
-          # Si tienes un icono base en resources/icon.png, úsalo; si no, crea uno mínimo
-          if [ -f resources/icon.png ]; then
-            cp resources/icon.png resources/android/icon-background.png
-            cp resources/icon.png resources/android/icon-foreground.png
-          else
-            # PNG 1x1 para salir del paso
-            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/icon-background.png
-            cp resources/android/icon-background.png resources/android/icon-foreground.png
+          # Si falta icon, creamos uno mínimo para evitar warnings (no bloquea el build)
+          if [ ! -f resources/icon.png ]; then
+            echo "ℹ️ No hay resources/icon.png; se creará uno temporal mínimo."
+            echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/icon.png
           fi
-          # Generar assets (si ya existen, no rompe)
-          ionic cordova resources android --force || true
-          echo "✅ Adaptive icon OK."
+          # Regenerar sólo los assets de splash (evita que salga el logo gris)
+          ionic cordova resources android --force --splash
+          echo "▶ Listado de drawables generados para splash:"
+          find platforms/android/app/src/main/res -maxdepth 1 -type d -name "drawable*" -print -exec sh -c 'ls -1 {} | head -n 5' \;
 
-      - name: Preparar plataforma Android (sin tocar firma)
+      - name: Preparar plataforma Android (limpia y reañade)
         script: |
           set -e
           ionic cordova platform rm android || true
@@ -42,7 +63,7 @@ workflows:
 
       - name: Construir APK (DEBUG)
         script: |
-          # Debug no requiere keystore y permite probar cambios de marca rápidamente
+          set -e
           ionic cordova build android --debug -- --packageType=apk
 
     artifacts:
