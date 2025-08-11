@@ -32,29 +32,32 @@ workflows:
           ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android
+      - name: Preparar plataforma Android y forzar splash del sistema
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Verificar que config.xml haya copiado los recursos a res/
-          ls -l platforms/android/app/src/main/res/drawable/ic_splash.xml || { echo "❌ Falta ic_splash.xml en res/drawable"; exit 1; }
-          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png || { echo "❌ Falta ic_splash_png.png en res/drawable-nodpi"; exit 1; }
+          # Verificar que config.xml copió los recursos a res/
+          test -f platforms/android/app/src/main/res/drawable/ic_splash.xml \
+            || { echo "❌ Falta ic_splash.xml en res/drawable"; exit 1; }
+          test -f platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png \
+            || { echo "❌ Falta ic_splash_png.png en res/drawable-nodpi"; exit 1; }
 
           MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
           echo "▶ Verificando AndroidManifest.xml…"
-          if ! grep -q "windowSplashScreenAnimatedIcon" "$MANIFEST"; then
-            echo "⚠️  Manifest sin windowSplashScreenAnimatedIcon. Aplicando patch…"
-            # Inyectar atributos en <application …>
-            sed -i 's|<application |<application android:windowSplashScreenAnimatedIcon="@drawable/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" |' "$MANIFEST"
+          if ! grep -q 'windowSplashScreenAnimatedIcon' "$MANIFEST"; then
+            echo "⚠️  Manifest sin atributo; aplicando patch con perl…"
+            perl -0777 -i -pe 's/<application\b/<application android:windowSplashScreenAnimatedIcon="@drawable\/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" /s if $_ !~ /windowSplashScreenAnimatedIcon=/' "$MANIFEST"
           fi
 
-          # Confirmar
-          grep -n "windowSplashScreenAnimatedIcon" "$MANIFEST" || { echo "❌ No se pudo inyectar windowSplashScreenAnimatedIcon"; exit 1; }
-          grep -n '@drawable/ic_splash' "$MANIFEST" || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
+          # Confirmación
+          grep -n 'windowSplashScreenAnimatedIcon' "$MANIFEST" \
+            || { echo "❌ Patch no aplicado"; exit 1; }
+          grep -n '@drawable/ic_splash' "$MANIFEST" \
+            || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
 
-      - name: Construir APK (DEBUG)
+      - name: Compilar APK (DEBUG)
         script: |
           ionic cordova build android --debug -- --packageType=apk
 
