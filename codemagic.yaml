@@ -1,6 +1,6 @@
 workflows:
-  build-android:
-    name: Moodle App Build for Android (APK unsigned)
+  build-android-debug:
+    name: Moodle App Build for Android (DEBUG - rápido para pruebas de marca)
     max_build_duration: 60
 
     environment:
@@ -13,7 +13,7 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
-          npm install -g @ionic/cli cordova gulp cordova-res
+          npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
           ionic build
 
@@ -21,60 +21,29 @@ workflows:
         script: |
           set -e
           mkdir -p resources/android
+          # Si tienes un icono base en resources/icon.png, úsalo; si no, crea uno mínimo
           if [ -f resources/icon.png ]; then
             cp resources/icon.png resources/android/icon-background.png
             cp resources/icon.png resources/android/icon-foreground.png
           else
+            # PNG 1x1 para salir del paso
             echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/android/icon-background.png
             cp resources/android/icon-background.png resources/android/icon-foreground.png
           fi
+          # Generar assets (si ya existen, no rompe)
           ionic cordova resources android --force || true
           echo "✅ Adaptive icon OK."
 
-      - name: Preparar plataforma Android y DESACTIVAR totalmente la firma
+      - name: Preparar plataforma Android (sin tocar firma)
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # 1) ELIMINAR archivos/props que puedan activar firma
-          rm -f release-signing.properties || true
-          rm -f android/release-signing.properties || true
-          rm -f platforms/android/release-signing.properties || true
-          sed -i.bak '/STORE_FILE/d;/STORE_PASSWORD/d;/KEY_ALIAS/d;/KEY_PASSWORD/d' platforms/android/gradle.properties || true
-          sed -i.bak '/STORE_FILE/d;/STORE_PASSWORD/d;/KEY_ALIAS/d;/KEY_PASSWORD/d' gradle.properties || true
-
-          GRADLE_FILE="platforms/android/app/build.gradle"
-          if [ ! -f "$GRADLE_FILE" ]; then
-            echo "❌ No se encontró $GRADLE_FILE"; exit 1
-          fi
-
-          echo "▶ Quitando referencias a release.keystore y la excepción…"
-          # 2) Comentar cualquier línea que haga referencia directa a release.keystore
-          sed -i.bak 's/^\(.*release\.keystore.*\)$/\/\/ \1/' "$GRADLE_FILE" || true
-          # 3) Reemplazar cualquier 'throw ... Keystore file does not exist' por un log inocuo
-          sed -i.bak "/Keystore file does not exist/ s/^.*$/logger.lifecycle('Signing disabled: no keystore (build unsigned).')/" "$GRADLE_FILE" || true
-
-          echo "▶ Neutralizando signingConfigs y referencias a signingConfig…"
-          # 4) Desactivar bloque signingConfigs y sus referencias
-          sed -i.bak 's/\bsigningConfigs\b/signingConfigs_DISABLED/g' "$GRADLE_FILE" || true
-          sed -i.bak 's/\bsigningConfig[[:space:]]\+signingConfigs\.release/\/\/ signing disabled/g' "$GRADLE_FILE" || true
-          # 5) Comentar líneas típicas de firma por si quedan sueltas
-          sed -i.bak -e 's/^\([[:space:]]*storeFile[[:space:]].*\)$/\/\/ \1/' \
-                      -e 's/^\([[:space:]]*storePassword[[:space:]].*\)$/\/\/ \1/' \
-                      -e 's/^\([[:space:]]*keyAlias[[:space:]].*\)$/\/\/ \1/' \
-                      -e 's/^\([[:space:]]*keyPassword[[:space:]].*\)$/\/\/ \1/' "$GRADLE_FILE" || true
-
-          echo "▶ Dump de líneas 330–380 para verificar parcheo:"
-          nl -ba "$GRADLE_FILE" | sed -n '330,380p'
-
-          echo "▶ Búsqueda de referencias residuales:"
-          (grep -RIn "keystore\\|release\\.keystore\\|signingConfig" platforms/android/app || true) | head -n 200
-
-      - name: Construir APK (unsigned)
+      - name: Construir APK (DEBUG)
         script: |
-          # Build de release (optimizado) pero sin firma (firma desactivada en Gradle)
-          ionic cordova build android --prod --release -- --packageType=apk
+          # Debug no requiere keystore y permite probar cambios de marca rápidamente
+          ionic cordova build android --debug -- --packageType=apk
 
     artifacts:
-      - platforms/android/app/build/outputs/apk/release/*.apk
+      - platforms/android/app/build/outputs/apk/debug/*.apk
