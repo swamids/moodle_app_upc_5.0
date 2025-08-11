@@ -1,139 +1,138 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget android-versionCode="50002" id="com.moodle.moodlemobile" ios-CFBundleVersion="5.0.0.2" version="5.0.1" versionCode="50002" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <name>UPC Moodle</name>
-    <description>App oficial aulas virtuales UPC</description>
-    <author email="mobile@moodle.com" href="http://moodle.com">UPC</author>
+<widget android-versionCode="50003" id="com.moodle.moodlemobile" ios-CFBundleVersion="5.0.0.3" version="5.0.2" versionCode="50003" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+  <name>UPC Moodle</name>
+  <description>App oficial aulas virtuales UPC</description>
+  <author email="mobile@moodle.com" href="http://moodle.com">UPC</author>
 
-    <content src="index.html" />
+  <content src="index.html" />
 
-    <!-- Accesos y navegación -->
-    <access origin="*" />
-    <access launch-external="yes" origin="tel:*" />
-    <access launch-external="yes" origin="mailto:*" />
-    <access launch-external="yes" origin="geo:*" />
-    <allow-navigation href="moodleappfs:*" />
-    <allow-navigation href="cdvfile:*" />
-    <allow-navigation href="content:*" />
-    <allow-navigation href="data:*" />
-    <allow-navigation href="*" />
-    <allow-intent href="*" />
-    <allow-intent href="tel:*" />
-    <allow-intent href="sms:*" />
-    <allow-intent href="mailto:*" />
-    <allow-intent href="geo:*" />
+  <!-- Accesos y navegación -->
+  <access origin="*" />
+  <access launch-external="yes" origin="tel:*" />
+  <access launch-external="yes" origin="mailto:*" />
+  <access launch-external="yes" origin="geo:*" />
+  <allow-navigation href="moodleappfs:*" />
+  <allow-navigation href="cdvfile:*" />
+  <allow-navigation href="content:*" />
+  <allow-navigation href="data:*" />
+  <allow-navigation href="*" />
+  <allow-intent href="*" />
+  <allow-intent href="tel:*" />
+  <allow-intent href="sms:*" />
+  <allow-intent href="mailto:*" />
+  <allow-intent href="geo:*" />
 
-    <hook src="scripts/cordova-hooks/before_plugin_add.sh" type="before_plugin_add" />
+  <hook src="scripts/cordova-hooks/before_plugin_add.sh" type="before_plugin_add" />
 
-    <!-- Preferencias generales -->
-    <preference name="permissions" value="none" />
-    <preference name="orientation" value="default" />
-    <preference name="target-device" value="universal" />
-    <preference name="fullscreen" value="false" />
-    <preference name="stay-in-webview" value="false" />
-    <preference name="webviewbounce" value="false" />
-    <preference name="UIWebViewBounce" value="false" />
-    <preference name="DisallowOverscroll" value="true" />
-    <preference name="prerendered-icon" value="true" />
-    <preference name="AppendUserAgent" value="MoodleMobile 5.0.1 (50002)" />
-    <preference name="BackupWebStorage" value="none" />
-    <preference name="ScrollEnabled" value="true" />
-    <preference name="KeyboardDisplayRequiresUserAction" value="false" />
-    <preference name="HideKeyboardFormAccessoryBar" value="false" />
-    <preference name="KeyboardResizeMode" value="ionic" />
-    <preference name="AllowInlineMediaPlayback" value="true" />
-    <preference name="LoadUrlTimeoutValue" value="60000" />
-    <preference name="load-url-timeout" value="60000" />
-    <preference name="AutoHideSplashScreen" value="false" />
+  <!-- Preferencias generales -->
+  <preference name="permissions" value="none" />
+  <preference name="orientation" value="default" />
+  <preference name="target-device" value="universal" />
+  <preference name="fullscreen" value="false" />
+  <preference name="stay-in-webview" value="false" />
+  <preference name="webviewbounce" value="false" />
+  <preference name="UIWebViewBounce" value="false" />
+  <preference name="DisallowOverscroll" value="true" />
+  <preference name="prerendered-icon" value="true" />
+  <preference name="AppendUserAgent" value="MoodleMobile 5.0.2 (50003)" />
+  <preference name="BackupWebStorage" value="none" />
+  <preference name="ScrollEnabled" value="true" />
+  <preference name="KeyboardDisplayRequiresUserAction" value="false" />
+  <preference name="HideKeyboardFormAccessoryBar" value="false" />
+  <preference name="KeyboardResizeMode" value="ionic" />
+  <preference name="AllowInlineMediaPlayback" value="true" />
+  <preference name="LoadUrlTimeoutValue" value="60000" />
+  <preference name="load-url-timeout" value="60000" />
+  <preference name="AutoHideSplashScreen" value="false" />
 
-    <!-- Android/iOS targets -->
-    <preference name="android-minSdkVersion" value="24" />
-    <preference name="android-targetSdkVersion" value="35" />
-    <preference name="AndroidPersistentFileLocation" value="Compatibility" />
-    <preference name="AndroidInsecureFileModeEnabled" value="true" />
-    <preference name="CustomURLSchemePluginClearsAndroidIntent" value="true" />
-    <preference name="deployment-target" value="13.0" />
-    <preference name="iosPersistentFileLocation" value="Compatibility" />
-    <preference name="iosScheme" value="moodleappfs" />
-    <preference name="WKWebViewOnly" value="true" />
-    <preference name="WKFullScreenEnabled" value="true" />
-    <preference name="AndroidXEnabled" value="true" />
-    <preference name="GradlePluginGoogleServicesEnabled" value="true" />
-    <preference name="GradlePluginGoogleServicesVersion" value="4.4.2" />
-    <preference name="GradlePluginKotlinVersion" value="1.9.24" />
+  <!-- Android/iOS targets -->
+  <preference name="android-minSdkVersion" value="24" />
+  <preference name="android-targetSdkVersion" value="35" />
+  <preference name="AndroidPersistentFileLocation" value="Compatibility" />
+  <preference name="AndroidInsecureFileModeEnabled" value="true" />
+  <preference name="CustomURLSchemePluginClearsAndroidIntent" value="true" />
+  <preference name="deployment-target" value="13.0" />
+  <preference name="iosPersistentFileLocation" value="Compatibility" />
+  <preference name="iosScheme" value="moodleappfs" />
+  <preference name="WKWebViewOnly" value="true" />
+  <preference name="WKFullScreenEnabled" value="true" />
+  <preference name="AndroidXEnabled" value="true" />
+  <preference name="GradlePluginGoogleServicesEnabled" value="true" />
+  <preference name="GradlePluginGoogleServicesVersion" value="4.4.2" />
+  <preference name="GradlePluginKotlinVersion" value="1.9.24" />
 
-    <!-- UI Android -->
-    <preference name="StatusBarOverlaysWebView" value="false" />
-    <preference name="StatusBarBackgroundColor" value="#FFFFFF" />
-    <preference name="NavigationBarBackgroundColor" value="#FFFFFF" />
-    <preference name="AndroidEdgeToEdge" value="false" />
+  <!-- UI Android -->
+  <preference name="StatusBarOverlaysWebView" value="false" />
+  <preference name="StatusBarBackgroundColor" value="#FFFFFF" />
+  <preference name="NavigationBarBackgroundColor" value="#FFFFFF" />
+  <preference name="AndroidEdgeToEdge" value="false" />
 
-    <feature name="StatusBar">
-        <param name="ios-package" onload="true" value="CDVStatusBar" />
-    </feature>
+  <feature name="StatusBar">
+    <param name="ios-package" onload="true" value="CDVStatusBar" />
+  </feature>
 
-    <!-- ===== ANDROID ===== -->
-    <platform name="android">
-        <!-- Icono base -->
-        <icon src="resources/icon.png" />
+  <!-- ===== ANDROID ===== -->
+  <platform name="android">
+    <!-- Icono base; cordova-res generará mipmap-* -->
+    <icon src="resources/icon.png" />
 
-        <!-- Splash del sistema (Android 12+) -->
-        <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-        <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
-        <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
+    <!-- Splash del sistema (Android 12+) -->
+    <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+    <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
+    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
 
-        <!-- Copiar TU splash al árbol de recursos de Android durante 'prepare' -->
-        <resource-file src="resources/splash.png" target="app/src/main/res/drawable-nodpi/ic_splash.png" />
+    <!-- Copiamos los recursos del splash del sistema durante 'prepare' -->
+    <resource-file src="resources/android/drawable/ic_splash.xml" target="app/src/main/res/drawable/ic_splash.xml" />
+    <resource-file src="resources/splash.png" target="app/src/main/res/drawable-nodpi/ic_splash_png.png" />
 
-        <!-- Firebase / otros -->
-        <resource-file src="google-services.json" target="app/google-services.json" />
+    <!-- Firebase / otros -->
+    <resource-file src="google-services.json" target="app/google-services.json" />
 
-        <!-- smallicon opcional -->
-        <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
-        <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
-        <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
-        <resource-file src="resources/android/icon/drawable-xhdpi-smallicon.png" target="app/src/main/res/mipmap-xhdpi/smallicon.png" />
+    <!-- smallicon opcional -->
+    <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
+    <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
+    <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
+    <resource-file src="resources/android/icon/drawable-xhdpi-smallicon.png" target="app/src/main/res/mipmap-xhdpi/smallicon.png" />
 
-        <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
+    <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
 
-        <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
-            <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
-        </edit-config>
+    <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
+      <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
+    </edit-config>
 
-        <config-file parent="/manifest/application" target="AndroidManifest.xml">
-            <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
-        </config-file>
+    <config-file parent="/manifest/application" target="AndroidManifest.xml">
+      <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+    </config-file>
 
-        <config-file parent="/*" target="AndroidManifest.xml">
-            <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
-            <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-        </config-file>
-    </platform>
+    <config-file parent="/*" target="AndroidManifest.xml">
+      <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+      <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    </config-file>
+  </platform>
 
-    <!-- ===== iOS (opcional) ===== -->
-    <platform name="ios">
-        <icon src="resources/icon.png" />
-        <splash src="resources/splash.png" />
+  <!-- ===== iOS (opcional) ===== -->
+  <platform name="ios">
+    <icon src="resources/icon.png" />
+    <splash src="resources/splash.png" />
 
-        <resource-file src="GoogleService-Info.plist" />
-        <edit-config file="*-Info.plist" mode="merge" target="NSCameraUsageDescription">
-            <string>We need camera access to take pictures so you can use them for changing your profile picture, attach them in your tasks submission and share them with the teachers.</string>
-        </edit-config>
-        <edit-config file="*-Info.plist" mode="merge" target="NSPhotoLibraryUsageDescription">
-            <string>We need photo library access to get pictures from there so you can use them for changing your profile picture, attach them in your tasks submission and share them with the teachers.</string>
-        </edit-config>
-        <edit-config file="*-Info.plist" mode="merge" target="UISupportsDocumentBrowser">
-            <true />
-        </edit-config>
-        <edit-config file="*-Info.plist" mode="merge" target="CFBundleShortVersionString">
-            <string>5.0.1</string>
-        </edit-config>
-        <edit-config file="*-Info.plist" mode="overwrite" target="CFBundleLocalizations">
-            <array>
-                <string>en</string>
-            </array>
-        </edit-config>
-        <config-file parent="FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED" target="*-Info.plist">
-            <string>YES</string>
-        </config-file>
-    </platform>
+    <resource-file src="GoogleService-Info.plist" />
+    <edit-config file="*-Info.plist" mode="merge" target="NSCameraUsageDescription">
+      <string>We need camera access to take pictures so you can use them for changing your profile picture, attach them in your tasks submission and share them with the teachers.</string>
+    </edit-config>
+    <edit-config file="*-Info.plist" mode="merge" target="NSPhotoLibraryUsageDescription">
+      <string>We need photo library access to get pictures from there so you can use them for changing your profile picture, attach them in your tasks submission and share them with the teachers.</string>
+    </edit-config>
+    <edit-config file="*-Info.plist" mode="merge" target="UISupportsDocumentBrowser">
+      <true />
+    </edit-config>
+    <edit-config file="*-Info.plist" mode="merge" target="CFBundleShortVersionString">
+      <string>5.0.2</string>
+    </edit-config>
+    <edit-config file="*-Info.plist" mode="overwrite" target="CFBundleLocalizations">
+      <array><string>en</string></array>
+    </edit-config>
+    <config-file parent="FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED" target="*-Info.plist">
+      <string>YES</string>
+    </config-file>
+  </platform>
 </widget>

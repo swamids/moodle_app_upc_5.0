@@ -17,29 +17,32 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Preparar recursos (icon y splash)
+      - name: Preparar recursos (icon y adaptive icon)
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/splash.png ] || { echo "❌ Falta resources/splash.png"; exit 1; }
 
-          # Adaptive icon para que cordova-res no falle
+          # Adaptive icon requerido por cordova-res
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
 
-          echo "▶ Generando assets con cordova-res (icon+splash)…"
-          ionic cordova resources android --force --icon --splash || true
+          ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android (limpio)
+      - name: Preparar plataforma Android
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          echo "▶ Verificando que config.xml haya copiado ic_splash:"
-          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png || { echo "❌ No se encuentra ic_splash.png (revisa <resource-file> en config.xml)"; exit 1; }
+          echo "▶ Verificando recursos del splash del sistema:"
+          ls -l platforms/android/app/src/main/res/drawable/ic_splash.xml || { echo "❌ Falta ic_splash.xml"; exit 1; }
+          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png || { echo "❌ Falta ic_splash_png.png"; exit 1; }
+
+          echo "▶ Verificando AndroidManifest.xml:"
+          grep -n "windowSplashScreenAnimatedIcon" platforms/android/app/src/main/AndroidManifest.xml || { echo "❌ Manifest sin windowSplashScreenAnimatedIcon"; exit 1; }
 
       - name: Construir APK (DEBUG)
         script: |
