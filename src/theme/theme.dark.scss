@@ -200,3 +200,5 @@
 :root.dark {
     @include dark-palette();
 }
+
+@import './overrides';

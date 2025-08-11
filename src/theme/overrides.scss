@@ -1,0 +1,50 @@
+// === Brand palette ===
+// Cambia este HEX por el color corporativo que desees para el botón principal:
+$brand-primary: #c80000; // rojo institucional (ejemplo)
+
+// Helpers para RGB/variantes
+@function hexToRgb($hex) {
+  @return red($hex), green($hex), blue($hex);
+}
+$brand-primary-rgb: hexToRgb($brand-primary);
+
+// Tints/Shades simples (ajusta si deseas otro matiz)
+$brand-primary-shade: mix(black, $brand-primary, 15%);
+$brand-primary-tint:  mix(white, $brand-primary, 15%);
+
+// ===== Light theme =====
+:root,
+:root .ios,
+:root .md {
+  --ion-color-primary: #{$brand-primary};
+  --ion-color-primary-rgb: #{$brand-primary-rgb};
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255,255,255;
+  --ion-color-primary-shade: #{$brand-primary-shade};
+  --ion-color-primary-tint: #{$brand-primary-tint};
+}
+
+// ===== Dark theme =====
+// Si usas modo oscuro, repetimos para el selector que emplea Moodle App
+// (normalmente añade un atributo data-theme o una clase al body).
+// Ajusta el selector si tu proyecto usa otro (por ejemplo .dark-theme).
+[data-theme="dark"],
+body.dark,
+html.dark {
+  --ion-color-primary: #{$brand-primary};
+  --ion-color-primary-rgb: #{$brand-primary-rgb};
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255,255,255;
+  --ion-color-primary-shade: #{$brand-primary-shade};
+  --ion-color-primary-tint: #{$brand-primary-tint};
+}
+
+// Asegura que la util de Ionic "ion-color-primary" lea las nuevas vars
+.ion-color-primary {
+  --ion-color-base: var(--ion-color-primary) !important;
+  --ion-color-base-rgb: var(--ion-color-primary-rgb) !important;
+  --ion-color-contrast: var(--ion-color-primary-contrast) !important;
+  --ion-color-contrast-rgb: var(--ion-color-primary-contrast-rgb) !important;
+  --ion-color-shade: var(--ion-color-primary-shade) !important;
+  --ion-color-tint: var(--ion-color-primary-tint) !important;
+}
