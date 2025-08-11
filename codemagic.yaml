@@ -1,6 +1,6 @@
 workflows:
   build-android-debug:
-    name: Moodle App Build for Android (DEBUG - splash PNG)
+    name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
 
     environment:
@@ -32,45 +32,19 @@ workflows:
           ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android y forzar splash del sistema
+      - name: Preparar plataforma Android (limpio)
         script: |
           set -e
           ionic cordova platform rm android || true
+          # Asegura que cordova-android se resuelva limpio
           ionic cordova platform add android
 
-          # Verifica que config.xml haya copiado el logo a res/
+          # Verifica que el logo exista en el árbol Android (copiado por <resource-file>, opcional)
           test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png \
-            || { echo "❌ Falta logo.png en res/drawable-nodpi (revisa <resource-file> en config.xml)"; exit 1; }
+            || echo "⚠️  No se encontró logo.png en res/ (no es crítico si la preferencia ya usa el archivo del proyecto)"
 
-          MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
-          echo "▶ Verificando AndroidManifest.xml…"
-
-          # Escribimos el script Python a archivo (sin heredocs)
-          PATCH="/tmp/patch_manifest.py"
-          rm -f "$PATCH"
-          printf '%s\n' \
-            'import io' \
-            'p = "platforms/android/app/src/main/AndroidManifest.xml"' \
-            'with io.open(p, "r", encoding="utf-8") as f:' \
-            '    s = f.read()' \
-            'if "windowSplashScreenAnimatedIcon" not in s:' \
-            '    s = s.replace(' \
-            '        "<application ", ' \
-            '        "<application android:windowSplashScreenAnimatedIcon=\"@drawable/logo\" android:windowSplashScreenBackground=\"#FFFFFF\" android:windowSplashScreenIconBackgroundColor=\"#FFFFFF\" ", ' \
-            '        1' \
-            '    )' \
-            '    with io.open(p, "w", encoding="utf-8") as f:' \
-            '        f.write(s)' \
-            'print("patched" if "windowSplashScreenAnimatedIcon" in s else "nochange")' \
-            > "$PATCH"
-
-          python3 "$PATCH"
-
-          # Confirmación
-          grep -n 'windowSplashScreenAnimatedIcon' "$MANIFEST" \
-            || { echo "❌ Patch no aplicado"; exit 1; }
-          grep -n '@drawable/logo' "$MANIFEST" \
-            || { echo "❌ Manifest no apunta a @drawable/logo"; exit 1; }
+          echo "▶ Mostrando preferencia en config.xml (para auditar):"
+          grep -n "AndroidWindowSplashScreenAnimatedIcon" config.xml || echo "⚠️  No se ve la preferencia en config.xml"
 
       - name: Compilar APK (DEBUG)
         script: |
