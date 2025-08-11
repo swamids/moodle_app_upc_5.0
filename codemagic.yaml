@@ -15,13 +15,13 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
-          npm install -g @ionic/cli cordova gulp
+          npm install -g @ionic/cli cordova gulp cordova-res
           npm ci || npm install
           ionic build
 
-      - name: Restaurar y verificar keystore
+      - name: Restaurar keystore y crear release-signing.properties
         script: |
-          # Restaurar keystore en /tmp y en la RAÍZ del repo (gradle lo busca ahí)
+          # Restaurar keystore en /tmp y en la RAÍZ del repo (algunos build.gradle lo buscan ahí)
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
           printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
@@ -37,7 +37,16 @@ workflows:
 
           echo "✅ Keystore verificado correctamente."
 
-      - name: Preparar plataforma y reemplazar literales de firma en todo platforms/android
+          # Archivo de firma para Gradle/Cordova
+          mkdir -p platforms/android
+          cat > platforms/android/release-signing.properties <<EOF
+          storeFile=$CM_BUILD_DIR/release.keystore
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          keyPassword=$CM_KEY_PASSWORD
+          EOF
+
+      - name: Preparar plataforma y (si aplica) limpiar literales de firma
         script: |
           set -e
           ionic cordova platform rm android || true
@@ -45,32 +54,50 @@ workflows:
 
           ROOT="platforms/android"
 
-          echo "▶ Buscando ocurrencias literales antes del reemplazo…"
-          (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l
+          echo "▶ Buscando ocurrencias literales 'CM_KEY_*'…"
+          COUNT=$( (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l )
+          echo "Encontradas: $COUNT"
 
-          # Reemplazos seguros (quote de metacaracteres con perl \Q...\E)
-          perl -0777 -pe "s/CM_KEY_ALIAS/\Q$CM_KEY_ALIAS\E/g" -i $(git -C "$ROOT" ls-files '*.gradle' '*.gradle.kts' '*.properties' 2>/dev/null || find "$ROOT" -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name '*.properties' \))
-          perl -0777 -pe "s/CM_KEYSTORE_PASSWORD/\Q$CM_KEYSTORE_PASSWORD\E/g" -i $(git -C "$ROOT" ls-files '*.gradle' '*.gradle.kts' '*.properties' 2>/dev/null || find "$ROOT" -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name '*.properties' \))
-          perl -0777 -pe "s/CM_KEY_PASSWORD/\Q$CM_KEY_PASSWORD\E/g" -i $(git -C "$ROOT" ls-files '*.gradle' '*.gradle.kts' '*.properties' 2>/dev/null || find "$ROOT" -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name '*.properties' \))
+          if [ "$COUNT" -gt 0 ]; then
+            echo "▶ Se encontraron literales; aplicando reemplazos puntuales…"
+            FILES=$(grep -RIl "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true)
+            if [ -n "$FILES" ]; then
+              # Reemplazar cadenas literales por valores reales en los archivos detectados
+              while IFS= read -r f; do
+                # Reemplazos simples y seguros con sed (comillas simples → comillas simples)
+                sed -i.bak "s/'CM_KEY_ALIAS'/'$CM_KEY_ALIAS'/g" "$f" || true
+                sed -i.bak "s/\"CM_KEY_ALIAS\"/\"$CM_KEY_ALIAS\"/g" "$f" || true
 
-          # Asegurar que la ruta de keystore apunte a la raíz del repo
-          find "$ROOT" -type f -name "*.gradle" -o -name "*.gradle.kts" | while read f; do
-            perl -0777 -pe "s/file\(['\"]release\.keystore['\"]\)/file('../../release.keystore')/g" -i "$f"
-          done
+                sed -i.bak "s/'CM_KEYSTORE_PASSWORD'/'$CM_KEYSTORE_PASSWORD'/g" "$f" || true
+                sed -i.bak "s/\"CM_KEYSTORE_PASSWORD\"/\"$CM_KEYSTORE_PASSWORD\"/g" "$f" || true
 
-          echo "▶ Verificando ocurrencias literales después del reemplazo… (debe ser 0)"
-          LEFT=$( (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l )
-          echo "Restantes: $LEFT"
-          if [ "$LEFT" -ne 0 ]; then
-            echo "❌ Aún quedan literales de firma. Abortando para evitar otro fallo."
-            (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | head -n 50
-            exit 1
+                sed -i.bak "s/'CM_KEY_PASSWORD'/'$CM_KEY_PASSWORD'/g" "$f" || true
+                sed -i.bak "s/\"CM_KEY_PASSWORD\"/\"$CM_KEY_PASSWORD\"/g" "$f" || true
+
+                # Asegurar que apunte al keystore de la raíz del repo
+                sed -i.bak "s#file('release.keystore')#file('../../release.keystore')#g" "$f" || true
+                sed -i.bak "s#file(\"release.keystore\")#file(\"../../release.keystore\")#g" "$f" || true
+              done <<< "$FILES"
+            fi
+
+            echo "▶ Verificando que ya no queden literales…"
+            LEFT=$( (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | wc -l )
+            echo "Restantes: $LEFT"
+            if [ "$LEFT" -ne 0 ]; then
+              echo "❌ Aún quedan literales de firma. Abortando para revisar:"
+              (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$ROOT" || true) | head -n 50
+              exit 1
+            fi
+          else
+            echo "✅ No hay literales de firma. Continuamos."
           fi
 
       - name: Construir APK firmado (Gradle/Cordova)
         script: |
-          # Forzar APK (no AAB). El build usará los valores ya inyectados.
-          ionic cordova build android --prod --release -- --packageType=apk
+          # Forzar APK y decirle explícitamente a Gradle qué properties usar
+          ionic cordova build android --prod --release -- \
+            --packageType=apk \
+            --gradleArg=-PcdvReleaseSigningPropertiesFile=platforms/android/release-signing.properties
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
