@@ -1,6 +1,6 @@
 workflows:
   build-android-debug:
-    name: Moodle App Build for Android (DEBUG - pruebas de marca)
+    name: Moodle App Build for Android (DEBUG - splash PNG)
     max_build_duration: 60
 
     environment:
@@ -13,16 +13,16 @@ workflows:
     scripts:
       - name: Instalar dependencias
         script: |
+          set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
           ionic build
 
-      - name: Preparar recursos (icon y adaptive icon)
+      - name: Preparar recursos (icon/adaptive)
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
-          [ -f resources/splash.png ] || { echo "❌ Falta resources/splash.png"; exit 1; }
-          [ -f resources/android/drawable/ic_splash.xml ] || { echo "❌ Falta resources/android/drawable/ic_splash.xml"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
 
           # Adaptive icon requerido por cordova-res
           mkdir -p resources/android
@@ -32,48 +32,50 @@ workflows:
           ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android y forzar splash del sistema
+      - name: Preparar plataforma Android y validar splash del sistema
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Verificar que config.xml copió los recursos a res/
-          test -f platforms/android/app/src/main/res/drawable/ic_splash.xml \
-            || { echo "❌ Falta ic_splash.xml en res/drawable"; exit 1; }
-          test -f platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png \
-            || { echo "❌ Falta ic_splash_png.png en res/drawable-nodpi"; exit 1; }
+          # Verifica que config.xml haya copiado el logo a res/
+          test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png \
+            || { echo "❌ Falta logo.png en res/drawable-nodpi (revisa <resource-file> en config.xml)"; exit 1; }
 
           MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
           echo "▶ Verificando AndroidManifest.xml…"
-
-          # Parche robusto con Python (inserta solo en la 1ª ocurrencia de <application )
-          python3 - << 'PY'
-import io, sys
+          # Fallback: si Cordova no inyectó la preferencia, la forzamos
+          if ! grep -q 'windowSplashScreenAnimatedIcon' "$MANIFEST"; then
+            echo "⚠️  Manifest sin atributo; aplicando patch (Python)…"
+            cat > /tmp/patch_manifest.py << 'PYCODE'
+import io
 p = "platforms/android/app/src/main/AndroidManifest.xml"
-with open(p, "r", encoding="utf-8") as f:
+with io.open(p, "r", encoding="utf-8") as f:
     s = f.read()
 if "windowSplashScreenAnimatedIcon" not in s:
     s = s.replace(
         "<application ",
-        '<application android:windowSplashScreenAnimatedIcon="@drawable/ic_splash" '
+        '<application android:windowSplashScreenAnimatedIcon="@drawable/logo" '
         'android:windowSplashScreenBackground="#FFFFFF" '
         'android:windowSplashScreenIconBackgroundColor="#FFFFFF" ',
         1
     )
-    with open(p, "w", encoding="utf-8") as f:
+    with io.open(p, "w", encoding="utf-8") as f:
         f.write(s)
-print("patched" if "windowSplashScreenAnimatedIcon" in s else "nochange")
-PY
+print("patched")
+PYCODE
+            python3 /tmp/patch_manifest.py
+          fi
 
           # Confirmación
           grep -n 'windowSplashScreenAnimatedIcon' "$MANIFEST" \
             || { echo "❌ Patch no aplicado"; exit 1; }
-          grep -n '@drawable/ic_splash' "$MANIFEST" \
-            || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
+          grep -n '@drawable/logo' "$MANIFEST" \
+            || { echo "❌ Manifest no apunta a @drawable/logo"; exit 1; }
 
       - name: Compilar APK (DEBUG)
         script: |
+          set -e
           ionic cordova build android --debug -- --packageType=apk
 
     artifacts:
