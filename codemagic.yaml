@@ -18,48 +18,27 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Validar assets de marca (splash >= 2732x2732)
+      - name: Validar splash (>= 2732x2732)
         script: |
           set -e
-          if [ ! -f resources/splash.png ]; then
-            echo "❌ No se encontró resources/splash.png"
-            exit 1
-          fi
-
-          # Instalar Pillow si no está presente
-          python3 - <<'PY'
-import sys
-try:
-    from PIL import Image
-except Exception:
-    import subprocess, sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
-    from PIL import Image
-
-try:
-    im = Image.open("resources/splash.png")
-    w, h = im.size
-    print(f"▶ splash.png: {w}x{h}px")
-    if w < 2732 or h < 2732:
-        print("❌ El splash debe ser al menos 2732x2732 px (recomendado 2732x2732, centrado).", file=sys.stderr)
-        sys.exit(2)
-except Exception as e:
-    print(f"❌ Error leyendo resources/splash.png: {e}", file=sys.stderr)
-    sys.exit(3)
-PY
+          [ -f resources/splash.png ] || { echo "❌ No se encontró resources/splash.png"; exit 1; }
+          python3 -m pip install --upgrade --quiet Pillow
+          python3 -c "from PIL import Image; import sys; im=Image.open('resources/splash.png'); w,h=im.size; print(f'▶ splash.png: {w}x{h}px'); 
+if w>=2732 and h>=2732: sys.exit(0)
+print('❌ El splash debe ser al menos 2732x2732 px (recomendado 2732x2732, centrado).', file=sys.stderr); sys.exit(2)"
 
       - name: Generar recursos Android (solo splash)
         script: |
           set -e
           mkdir -p resources/android
-          # Si falta icon.png, creamos uno mínimo para evitar warnings
+          # Si falta icon.png, crear uno mínimo para evitar warnings
           if [ ! -f resources/icon.png ]; then
             echo "ℹ️ No hay resources/icon.png; se crea uno temporal mínimo."
             echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII= | base64 -d > resources/icon.png
           fi
           ionic cordova resources android --force --splash
-          echo "▶ Verificando drawables de splash generados:"
-          find platforms/android/app/src/main/res -maxdepth 1 -type d -name "drawable*" -print | sort
+          echo "▶ Directorios drawable presentes:"
+          find platforms/android/app/src/main/res -maxdepth 1 -type d -name "drawable*" | sort
 
       - name: Preparar plataforma Android (limpia y reañade)
         script: |
