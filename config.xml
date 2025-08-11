@@ -1,6 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget android-versionCode="50001" id="com.moodle.moodlemobile" ios-CFBundleVersion="5.0.0.1" version="5.0.0" versionCode="50001" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-
     <name>UPC Moodle</name>
     <description>App oficial aulas virtuales UPC</description>
     <author email="mobile@moodle.com" href="http://moodle.com">UPC</author>
@@ -73,40 +72,40 @@
     </feature>
 
     <!-- ===== ANDROID ===== -->
-<platform name="android">
-  <!-- Icono base (cordova-res generará los mipmap) -->
-  <icon src="resources/icon.png" />
+    <platform name="android">
+        <!-- Icono base; cordova-res generará mipmap-* -->
+        <icon src="resources/icon.png" />
 
-  <!-- Splash del sistema (Android 12+) -->
-  <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-  <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
-  <!-- Usar drawable propio que crearemos desde Codemagic -->
-  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
+        <!-- Splash del sistema (Android 12+) -->
+        <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+        <preference name="AndroidWindowSplashScreenIconBackgroundColor" value="#FFFFFF" />
+        <!-- Usamos drawable propio que creamos en el build: @drawable/ic_splash -->
+        <preference name="AndroidWindowSplashScreenAnimatedIcon" value="@drawable/ic_splash" />
 
-  <!-- Firebase / otros (tus líneas se conservan) -->
-  <resource-file src="google-services.json" target="app/google-services.json" />
+        <!-- Firebase / otros -->
+        <resource-file src="google-services.json" target="app/google-services.json" />
 
-  <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
-  <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
-  <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
-  <resource-file src="resources/android/icon/drawable-xhdpi-smallicon.png" target="app/src/main/res/mipmap-xhdpi/smallicon.png" />
+        <!-- smallicon opcional -->
+        <resource-file src="resources/android/icon/drawable-ldpi-smallicon.png" target="app/src/main/res/mipmap-ldpi/smallicon.png" />
+        <resource-file src="resources/android/icon/drawable-mdpi-smallicon.png" target="app/src/main/res/mipmap-mdpi/smallicon.png" />
+        <resource-file src="resources/android/icon/drawable-hdpi-smallicon.png" target="app/src/main/res/mipmap-hdpi/smallicon.png" />
+        <resource-file src="resources/android/icon/drawable-xhdpi-smallicon.png" target="app/src/main/res/mipmap-xhdpi/smallicon.png" />
 
-  <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
+        <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
 
-  <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
-    <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
-  </edit-config>
+        <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
+            <application android:allowBackup="false" android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
+        </edit-config>
 
-  <config-file parent="/manifest/application" target="AndroidManifest.xml">
-    <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
-  </config-file>
+        <config-file parent="/manifest/application" target="AndroidManifest.xml">
+            <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+        </config-file>
 
-  <config-file parent="/*" target="AndroidManifest.xml">
-    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-  </config-file>
-</platform>
-
+        <config-file parent="/*" target="AndroidManifest.xml">
+            <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+            <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+        </config-file>
+    </platform>
 
     <!-- ===== iOS (opcional) ===== -->
     <platform name="ios">

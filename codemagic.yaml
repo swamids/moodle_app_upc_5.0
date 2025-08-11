@@ -20,12 +20,8 @@ workflows:
       - name: Preparar recursos (icon y splash)
         script: |
           set -e
-          if [ ! -f resources/icon.png ]; then
-            echo "❌ Falta resources/icon.png"; exit 1
-          fi
-          if [ ! -f resources/splash.png ]; then
-            echo "❌ Falta resources/splash.png"; exit 1
-          fi
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          [ -f resources/splash.png ] || { echo "❌ Falta resources/splash.png"; exit 1; }
 
           # Adaptive icon requerido por cordova-res
           mkdir -p resources/android
@@ -42,7 +38,7 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Drawable para el splash del sistema (@drawable/ic_splash)
+          # Drawable que usará el splash del sistema (@drawable/ic_splash)
           mkdir -p platforms/android/app/src/main/res/drawable-nodpi
           cp resources/splash.png platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png
 
