@@ -38,13 +38,21 @@ workflows:
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          echo "▶ Verificando recursos copiados por config.xml:"
+          # Verificar que config.xml haya copiado los recursos a res/
           ls -l platforms/android/app/src/main/res/drawable/ic_splash.xml || { echo "❌ Falta ic_splash.xml en res/drawable"; exit 1; }
           ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash_png.png || { echo "❌ Falta ic_splash_png.png en res/drawable-nodpi"; exit 1; }
 
-          echo "▶ Verificando AndroidManifest.xml:"
-          grep -n "windowSplashScreenAnimatedIcon" platforms/android/app/src/main/AndroidManifest.xml || { echo "❌ Manifest sin windowSplashScreenAnimatedIcon"; exit 1; }
-          grep -n '@drawable/ic_splash' platforms/android/app/src/main/AndroidManifest.xml || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
+          MANIFEST="platforms/android/app/src/main/AndroidManifest.xml"
+          echo "▶ Verificando AndroidManifest.xml…"
+          if ! grep -q "windowSplashScreenAnimatedIcon" "$MANIFEST"; then
+            echo "⚠️  Manifest sin windowSplashScreenAnimatedIcon. Aplicando patch…"
+            # Inyectar atributos en <application …>
+            sed -i 's|<application |<application android:windowSplashScreenAnimatedIcon="@drawable/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" |' "$MANIFEST"
+          fi
+
+          # Confirmar
+          grep -n "windowSplashScreenAnimatedIcon" "$MANIFEST" || { echo "❌ No se pudo inyectar windowSplashScreenAnimatedIcon"; exit 1; }
+          grep -n '@drawable/ic_splash' "$MANIFEST" || { echo "❌ Manifest no apunta a @drawable/ic_splash"; exit 1; }
 
       - name: Construir APK (DEBUG)
         script: |
