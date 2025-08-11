@@ -19,10 +19,11 @@ workflows:
           npm ci || npm install
           ionic build
 
-      - name: Restaurar keystore y verificar
+      - name: Restaurar keystore (root y /tmp) y verificar credenciales
         script: |
-          # Restaurar keystore en /tmp
+          # Restaurar el keystore en /tmp y en la RAÍZ del repo para satisfacer app/build.gradle
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
+          printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
           echo "▶ Verificando store password..."
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
@@ -39,7 +40,6 @@ workflows:
       - name: Preparar recursos Android (adaptive icon)
         script: |
           mkdir -p resources/android
-          # Usar resources/icon.png si existe, si no crear base mínima 1x1 y escalar
           if [ -f resources/icon.png ]; then
             BASE=resources/icon.png
           else
@@ -50,7 +50,7 @@ workflows:
           sips -s format png -Z 1024 "$BASE" --out resources/android/icon-background.png  >/dev/null
           echo "✅ Adaptive icon listo."
 
-      - name: Preparar plataforma y desactivar firma de Gradle
+      - name: Platform add y (si aplica) reemplazo puntual de literales CM_KEY_* en app/build.gradle
         script: |
           set -e
           ionic cordova platform rm android || true
@@ -61,47 +61,34 @@ workflows:
             echo "❌ No se encontró $GRADLE_FILE"; exit 1
           fi
 
-          echo "▶ Neutralizando signing en $GRADLE_FILE (sin tocar llaves)…"
-          # 1) Renombrar 'signingConfigs' para que Gradle no lo use
-          sed -i.bak 's/\bsigningConfigs\b/signingConfigs_DISABLED/g' "$GRADLE_FILE" || true
-          # 2) Neutralizar referencias a la config de release
-          sed -i.bak 's/\bsigningConfig[[:space:]]\+signingConfigs\.release/\/\/ signing disabled/g' "$GRADLE_FILE" || true
-          # 3) Por si algún plugin usa variables literales CM_KEY_*, mostrarlas si existen
-          echo "▶ Chequeando literales CM_KEY_* restantes (solo informativo)…"
-          (grep -RIn "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" platforms/android || true) | head -n 50
+          echo "▶ Buscando literales 'CM_KEY_*' en $GRADLE_FILE…"
+          COUNT=$( (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | wc -l )
+          echo "Encontradas: $COUNT"
 
-      - name: Construir APK (unsigned)
-        script: |
-          # Forzar APK (no AAB) — sin firma en Gradle
-          ionic cordova build android --prod --release -- --packageType=apk
-
-      - name: Alinear y firmar APK con apksigner
-        script: |
-          UNSIGNED=platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk
-          ALIGNED=platforms/android/app/build/outputs/apk/release/app-release-aligned.apk
-          FINAL=platforms/android/app/build/outputs/apk/release/app-release.apk
-
-          if [ ! -f "$UNSIGNED" ]; then
-            echo "❌ No se encontró $UNSIGNED (el build unsigned falló)."
-            exit 1
+          if [ "$COUNT" -gt 0 ]; then
+            echo "▶ Reemplazando literales por valores reales (enmascarados en logs)…"
+            # alias
+            perl -0777 -pe "s/(['\"])CM_KEY_ALIAS\\1/\$1$CM_KEY_ALIAS\$1/g" -i.bak "$GRADLE_FILE"
+            # store password
+            perl -0777 -pe "s/(['\"])CM_KEYSTORE_PASSWORD\\1/\$1$CM_KEYSTORE_PASSWORD\$1/g" -i "$GRADLE_FILE"
+            # key password
+            perl -0777 -pe "s/(['\"])CM_KEY_PASSWORD\\1/\$1$CM_KEY_PASSWORD\$1/g" -i "$GRADLE_FILE"
+            echo "▶ Verificando que ya no queden literales…"
+            LEFT=$( (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | wc -l )
+            echo "Restantes en app/build.gradle: $LEFT"
+            if [ "$LEFT" -ne 0 ]; then
+              echo "❌ Aún quedan literales. Mostrando primeras coincidencias y abortando:"
+              (grep -n "CM_KEY_ALIAS\|CM_KEYSTORE_PASSWORD\|CM_KEY_PASSWORD" "$GRADLE_FILE" || true) | head -n 50
+              exit 1
+            fi
+          else
+            echo "✅ No hay literales en app/build.gradle."
           fi
 
-          echo "▶ zipalign…"
-          zipalign -v 4 "$UNSIGNED" "$ALIGNED"
-
-          echo "▶ apksigner sign…"
-          apksigner sign \
-            --ks /tmp/release.keystore \
-            --ks-key-alias "$CM_KEY_ALIAS" \
-            --ks-pass pass:"$CM_KEYSTORE_PASSWORD" \
-            --key-pass pass:"$CM_KEY_PASSWORD" \
-            --out "$FINAL" \
-            "$ALIGNED"
-
-          echo "▶ Verificando firma…"
-          apksigner verify --print-certs "$FINAL"
-
-          echo "✅ APK firmado: $FINAL"
+      - name: Construir APK firmado (Gradle/Cordova)
+        script: |
+          # Forzar APK (no AAB). app/build.gradle encontrará release.keystore en la raíz.
+          ionic cordova build android --prod --release -- --packageType=apk
 
     artifacts:
       - platforms/android/app/build/outputs/apk/release/*.apk
