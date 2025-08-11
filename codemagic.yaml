@@ -31,43 +31,49 @@ workflows:
           ionic cordova resources android --force || true
           echo "✅ Adaptive icon OK."
 
-      - name: Preparar plataforma Android y DESACTIVAR por completo la firma
+      - name: Preparar plataforma Android y DESACTIVAR totalmente la firma
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # 1) Eliminar archivos/props que activan firma
+          # 1) ELIMINAR archivos/props que puedan activar firma
           rm -f release-signing.properties || true
           rm -f android/release-signing.properties || true
           rm -f platforms/android/release-signing.properties || true
-          # Algunas plantillas usan estas variables en gradle.properties:
           sed -i.bak '/STORE_FILE/d;/STORE_PASSWORD/d;/KEY_ALIAS/d;/KEY_PASSWORD/d' platforms/android/gradle.properties || true
           sed -i.bak '/STORE_FILE/d;/STORE_PASSWORD/d;/KEY_ALIAS/d;/KEY_PASSWORD/d' gradle.properties || true
 
-          # 2) Comentar llamadas de firma dentro de app/build.gradle
           GRADLE_FILE="platforms/android/app/build.gradle"
           if [ ! -f "$GRADLE_FILE" ]; then
             echo "❌ No se encontró $GRADLE_FILE"; exit 1
           fi
 
-          echo "▶ Neutralizando signing en $GRADLE_FILE…"
-          # Evita que el bloque se referencie
+          echo "▶ Quitando referencias a release.keystore y la excepción…"
+          # 2) Comentar cualquier línea que haga referencia directa a release.keystore
+          sed -i.bak 's/^\(.*release\.keystore.*\)$/\/\/ \1/' "$GRADLE_FILE" || true
+          # 3) Reemplazar cualquier 'throw ... Keystore file does not exist' por un log inocuo
+          sed -i.bak "/Keystore file does not exist/ s/^.*$/logger.lifecycle('Signing disabled: no keystore (build unsigned).')/" "$GRADLE_FILE" || true
+
+          echo "▶ Neutralizando signingConfigs y referencias a signingConfig…"
+          # 4) Desactivar bloque signingConfigs y sus referencias
+          sed -i.bak 's/\bsigningConfigs\b/signingConfigs_DISABLED/g' "$GRADLE_FILE" || true
           sed -i.bak 's/\bsigningConfig[[:space:]]\+signingConfigs\.release/\/\/ signing disabled/g' "$GRADLE_FILE" || true
-          # Comentar líneas típicas de firma (independiente del bloque donde estén)
+          # 5) Comentar líneas típicas de firma por si quedan sueltas
           sed -i.bak -e 's/^\([[:space:]]*storeFile[[:space:]].*\)$/\/\/ \1/' \
                       -e 's/^\([[:space:]]*storePassword[[:space:]].*\)$/\/\/ \1/' \
                       -e 's/^\([[:space:]]*keyAlias[[:space:]].*\)$/\/\/ \1/' \
                       -e 's/^\([[:space:]]*keyPassword[[:space:]].*\)$/\/\/ \1/' "$GRADLE_FILE" || true
-          # Por si aparece ruta explícita a release.keystore, coméntala
-          sed -i.bak 's/^\(.*release\.keystore.*\)$/\/\/ \1/' "$GRADLE_FILE" || true
 
-          echo "▶ Comprobando referencias residuales a keystore…"
-          (grep -RIn "keystore|signingConfig|release\\.keystore" platforms/android/app || true) | head -n 100
+          echo "▶ Dump de líneas 330–380 para verificar parcheo:"
+          nl -ba "$GRADLE_FILE" | sed -n '330,380p'
+
+          echo "▶ Búsqueda de referencias residuales:"
+          (grep -RIn "keystore\\|release\\.keystore\\|signingConfig" platforms/android/app || true) | head -n 200
 
       - name: Construir APK (unsigned)
         script: |
-          # Forzamos APK de release pero sin firma (ya neutralizada en Gradle)
+          # Build de release (optimizado) pero sin firma (firma desactivada en Gradle)
           ionic cordova build android --prod --release -- --packageType=apk
 
     artifacts:
