@@ -32,18 +32,14 @@ workflows:
           ionic cordova resources android --force --icon --splash || true
           echo "✅ cordova-res ejecutado."
 
-      - name: Preparar plataforma Android
+      - name: Preparar plataforma Android (limpio)
         script: |
           set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Drawable que usará el splash del sistema (@drawable/ic_splash)
-          mkdir -p platforms/android/app/src/main/res/drawable-nodpi
-          cp resources/splash.png platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png
-
-          echo "▶ Verificando drawable ic_splash:"
-          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png || { echo "❌ No se creó ic_splash.png"; exit 1; }
+          echo "▶ Comprobación del recurso ic_splash copiado por config.xml:"
+          ls -l platforms/android/app/src/main/res/drawable-nodpi/ic_splash.png || { echo "❌ No se encuentra ic_splash.png (revisa <resource-file> en config.xml)"; exit 1; }
 
       - name: Construir APK (DEBUG)
         script: |
