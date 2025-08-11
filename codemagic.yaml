@@ -10,7 +10,7 @@ workflows:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group  # Debe contener: CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD (todas Secret)
+        - keystore_group  # Secret vars: CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
 
     scripts:
       - name: Instalar dependencias
@@ -21,7 +21,7 @@ workflows:
 
       - name: Restaurar y verificar keystore
         script: |
-          # Restaurar keystore en /tmp y en la RAÍZ del repo (porque el build.gradle lo busca ahí)
+          # Restaurar keystore en /tmp y en la RAÍZ del repo (build.gradle lo busca ahí)
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
           printf "%s" "$CM_KEYSTORE" | base64 -d > "$CM_BUILD_DIR/release.keystore"
 
@@ -37,33 +37,33 @@ workflows:
 
           echo "✅ Keystore verificado correctamente."
 
-      - name: Preparar plataforma y parchear build.gradle (firmas literales)
+      - name: Preparar plataforma y parchear build.gradle (reemplazar literales de firma)
         script: |
+          set -e
           ionic cordova platform rm android || true
           ionic cordova platform add android
 
           GRADLE_FILE="platforms/android/app/build.gradle"
-
-          # Reemplazar SOLO los literales de firma por los valores reales
-          # (Codemagic enmascara valores Secret en los logs)
-          if [ -f "$GRADLE_FILE" ]; then
-            echo "▶ Parchando literales de firma en $GRADLE_FILE"
-            # keyAlias
-            sed -i.bak "s/'CM_KEY_ALIAS'/'$CM_KEY_ALIAS'/g; s/\"CM_KEY_ALIAS\"/\"$CM_KEY_ALIAS\"/g" "$GRADLE_FILE"
-            # storePassword
-            sed -i.bak "s/'CM_KEYSTORE_PASSWORD'/'$CM_KEYSTORE_PASSWORD'/g; s/\"CM_KEYSTORE_PASSWORD\"/\"$CM_KEYSTORE_PASSWORD\"/g" "$GRADLE_FILE"
-            # keyPassword
-            sed -i.bak "s/'CM_KEY_PASSWORD'/'$CM_KEY_PASSWORD'/g; s/\"CM_KEY_PASSWORD\"/\"$CM_KEY_PASSWORD\"/g" "$GRADLE_FILE"
-            # ruta del keystore (asegurar que apunta al de la raíz)
-            sed -i.bak "s#file('release.keystore')#file('../../release.keystore')#g" "$GRADLE_FILE" || true
-            sed -i.bak "s#file(\"release.keystore\")#file(\"../../release.keystore\")#g" "$GRADLE_FILE" || true
-          else
+          if [ ! -f "$GRADLE_FILE" ]; then
             echo "❌ No se encontró $GRADLE_FILE"; exit 1
           fi
 
+          echo "▶ Reemplazando literales 'CM_KEY_*' por valores reales (enmascarados en logs)"
+          # Reemplazar 'CM_KEY_ALIAS' y "CM_KEY_ALIAS" por el alias real, preservando el tipo de comilla.
+          perl -0777 -pe "s/(['\"])CM_KEY_ALIAS\\1/\$1$CM_KEY_ALIAS\$1/g" -i.bak "$GRADLE_FILE"
+          # Reemplazar 'CM_KEYSTORE_PASSWORD' y "CM_KEYSTORE_PASSWORD"
+          perl -0777 -pe "s/(['\"])CM_KEYSTORE_PASSWORD\\1/\$1$CM_KEYSTORE_PASSWORD\$1/g" -i.bak "$GRADLE_FILE"
+          # Reemplazar 'CM_KEY_PASSWORD' y "CM_KEY_PASSWORD"
+          perl -0777 -pe "s/(['\"])CM_KEY_PASSWORD\\1/\$1$CM_KEY_PASSWORD\$1/g" -i.bak "$GRADLE_FILE"
+
+          # Asegurar que la ruta del keystore apunta al de la RAÍZ del repo
+          perl -0777 -pe "s/file\\(['\\\"]release\\.keystore['\\\"]\\)/file\\('../../release.keystore'\\)/g" -i "$GRADLE_FILE"
+
+          echo "✅ Parche aplicado en $GRADLE_FILE"
+
       - name: Construir APK firmado (Gradle/Cordova)
         script: |
-          # Forzar APK (no AAB). El build.gradle ya tiene los valores reales de firma
+          # Forzar APK (no AAB). El build.gradle ya contiene los datos reales de firma
           ionic cordova build android --prod --release -- --packageType=apk
 
     artifacts:
