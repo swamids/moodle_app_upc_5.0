@@ -56,7 +56,7 @@ workflows:
             'if "windowSplashScreenAnimatedIcon" not in s:' \
             '    s = s.replace(' \
             '        "<application ", ' \
-            '        "<application android:windowSplashScreenAnimatedIcon=\\"@drawable/logo\\" android:windowSplashScreenBackground=\\"#FFFFFF\\" android:windowSplashScreenIconBackgroundColor=\\"#FFFFFF\\" ", ' \
+            '        "<application android:windowSplashScreenAnimatedIcon=\"@drawable/logo\" android:windowSplashScreenBackground=\"#FFFFFF\" android:windowSplashScreenIconBackgroundColor=\"#FFFFFF\" ", ' \
             '        1' \
             '    )' \
             '    with io.open(p, "w", encoding="utf-8") as f:' \
