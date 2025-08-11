@@ -48,7 +48,8 @@ workflows:
           echo "▶ Verificando AndroidManifest.xml…"
           if ! grep -q 'windowSplashScreenAnimatedIcon' "$MANIFEST"; then
             echo "⚠️  Manifest sin atributo; aplicando patch con perl…"
-            perl -0777 -i -pe 's/<application\b/<application android:windowSplashScreenAnimatedIcon="@drawable\/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" /s if $_ !~ /windowSplashScreenAnimatedIcon=/' "$MANIFEST"
+            # OJO: escapar el @ como \@ para evitar interpolación de arrays en Perl
+            perl -0777 -i -pe 's/<application\b/<application android:windowSplashScreenAnimatedIcon="\\@drawable\/ic_splash" android:windowSplashScreenBackground="#FFFFFF" android:windowSplashScreenIconBackgroundColor="#FFFFFF" /s if $_ !~ /windowSplashScreenAnimatedIcon=/' "$MANIFEST"
           fi
 
           # Confirmación
