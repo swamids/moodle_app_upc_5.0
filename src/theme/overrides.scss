@@ -1,161 +1,106 @@
 // =========================
-// overrides.scss
-// Reemplaza todo rastro del naranja por el color corporativo
+//  overrides.scss
+//  Cambia el color primario de la app a #C8102E (Unipiloto)
 // =========================
 
-// 1) Color de marca
-$brand-primary: #C8102E !default; // <-- cambia aquí si necesitas otro HEX
-$brand-primary-rgb: 200, 16, 46;   // RGB de #C8102E
-$brand-primary-contrast: #FFFFFF;
+// Color principal
+$brand-primary: #C8102E !default;
 
-// Tints/Shades simples
-$brand-primary-shade: darken($brand-primary, 10%);
-$brand-primary-tint:  lighten($brand-primary, 10%);
+// Variantes automáticas para estados
+$brand-primary-rgb: 200, 16, 46; // RGB de #C8102E
+$brand-primary-contrast: #FFFFFF; // Texto blanco sobre el color principal
 
-// 2) Variables globales Ionic (modo claro)
-:root,
-:root .ios,
-:root .md {
+// Botones primarios
+$button-primary-background: $brand-primary !default;
+$button-primary-color: $brand-primary-contrast !default;
+$button-primary-border-color: $brand-primary !default;
+
+$button-primary-background-hover: darken($brand-primary, 5%) !default;
+$button-primary-background-active: darken($brand-primary, 10%) !default;
+$button-primary-background-focus: lighten($brand-primary, 5%) !default;
+
+// Links
+$link-color: $brand-primary !default;
+$link-color-hover: darken($brand-primary, 5%) !default;
+$link-color-active: darken($brand-primary, 10%) !default;
+$link-color-focus: lighten($brand-primary, 5%) !default;
+
+// Barra de progreso
+$progress-bar-background: $brand-primary !default;
+
+// Toggles (switch)
+$toggle-color-on: $brand-primary !default;
+
+// Badges
+$badge-primary-background: $brand-primary !default;
+
+// Radio buttons & checkboxes
+$radio-color-on: $brand-primary !default;
+$checkbox-color-on: $brand-primary !default;
+
+// Tabs
+$tabs-tab-color-active: $brand-primary !default;
+$tabs-tab-color-active-hover: darken($brand-primary, 5%) !default;
+
+// Ionic variables extra (por si usa Theme variables internas)
+:root {
   --ion-color-primary: #{$brand-primary};
   --ion-color-primary-rgb: #{$brand-primary-rgb};
   --ion-color-primary-contrast: #{$brand-primary-contrast};
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #{$brand-primary-shade};
-  --ion-color-primary-tint: #{$brand-primary-tint};
-
-  // Algunas vistas del core usan prefijo "core"
-  --core-color-primary: var(--ion-color-primary);
-  --core-color-primary-rgb: var(--ion-color-primary-rgb);
+  --ion-color-primary-shade: #{darken($brand-primary, 10%)};
+  --ion-color-primary-tint: #{lighten($brand-primary, 10%)};
 }
+// =========================
+//  overrides.scss
+//  Cambia el color primario de la app a #C8102E (Unipiloto)
+// =========================
 
-// 3) Variables globales Ionic (modo oscuro)
-// Ajusta el selector si tu app usa otro (p. ej. body.dark)
-[data-theme="dark"],
-body.dark,
-html.dark {
+// Color principal
+$brand-primary: #C8102E !default;
+
+// Variantes automáticas para estados
+$brand-primary-rgb: 200, 16, 46; // RGB de #C8102E
+$brand-primary-contrast: #FFFFFF; // Texto blanco sobre el color principal
+
+// Botones primarios
+$button-primary-background: $brand-primary !default;
+$button-primary-color: $brand-primary-contrast !default;
+$button-primary-border-color: $brand-primary !default;
+
+$button-primary-background-hover: darken($brand-primary, 5%) !default;
+$button-primary-background-active: darken($brand-primary, 10%) !default;
+$button-primary-background-focus: lighten($brand-primary, 5%) !default;
+
+// Links
+$link-color: $brand-primary !default;
+$link-color-hover: darken($brand-primary, 5%) !default;
+$link-color-active: darken($brand-primary, 10%) !default;
+$link-color-focus: lighten($brand-primary, 5%) !default;
+
+// Barra de progreso
+$progress-bar-background: $brand-primary !default;
+
+// Toggles (switch)
+$toggle-color-on: $brand-primary !default;
+
+// Badges
+$badge-primary-background: $brand-primary !default;
+
+// Radio buttons & checkboxes
+$radio-color-on: $brand-primary !default;
+$checkbox-color-on: $brand-primary !default;
+
+// Tabs
+$tabs-tab-color-active: $brand-primary !default;
+$tabs-tab-color-active-hover: darken($brand-primary, 5%) !default;
+
+// Ionic variables extra (por si usa Theme variables internas)
+:root {
   --ion-color-primary: #{$brand-primary};
   --ion-color-primary-rgb: #{$brand-primary-rgb};
   --ion-color-primary-contrast: #{$brand-primary-contrast};
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #{$brand-primary-shade};
-  --ion-color-primary-tint: #{$brand-primary-tint};
-
-  --core-color-primary: var(--ion-color-primary);
-  --core-color-primary-rgb: var(--ion-color-primary-rgb);
-}
-
-// 4) Asegurar utilidades de Ionic
-.ion-color-primary {
-  --ion-color-base: var(--ion-color-primary) !important;
-  --ion-color-base-rgb: var(--ion-color-primary-rgb) !important;
-  --ion-color-contrast: var(--ion-color-primary-contrast) !important;
-  --ion-color-contrast-rgb: var(--ion-color-primary-contrast-rgb) !important;
-  --ion-color-shade: var(--ion-color-primary-shade) !important;
-  --ion-color-tint: var(--ion-color-primary-tint) !important;
-}
-
-// =========================
-// Componentes que suelen quedar naranjas
-// =========================
-
-// --- Segment (tabs superiores con subrayado) ---
-ion-segment {
-  --indicator-color: var(--ion-color-primary);
-  --indicator-color-checked: var(--ion-color-primary);
-}
-.segment-button-indicator .indicator-background {
-  background: var(--ion-color-primary) !important;
-}
-ion-segment-button {
-  --color-checked: var(--ion-color-primary);
-}
-
-// --- Tab bar inferior (icono/píldoras seleccionadas y badges) ---
-ion-tab-bar {
-  --color-selected: var(--ion-color-primary);
-}
-ion-tab-button {
-  --color-selected: var(--ion-color-primary);
-}
-ion-tab-bar ion-badge,
-ion-tab-button ion-badge {
-  // Muchas veces vienen con color="warning" (naranja)
-  background: var(--ion-color-primary) !important;
-  color: #fff !important;
-}
-
-// --- Botones (por si algún estilo del core no respeta el color) ---
-ion-button.ion-color-primary,
-button.ion-color-primary {
-  --background: var(--ion-color-primary);
-  --background-hover: var(--ion-color-primary-shade);
-  --background-activated: var(--ion-color-primary-shade);
-  --background-focused: var(--ion-color-primary-tint);
-  --color: var(--ion-color-primary-contrast);
-  --border-color: var(--ion-color-primary);
-}
-
-// --- Badges en general ---
-ion-badge.ion-color-primary,
-ion-badge[color="primary"] {
-  --background: var(--ion-color-primary);
-  --color: #fff;
-}
-
-// --- Toggles / Switch ---
-ion-toggle {
-  --handle-background-checked: var(--ion-color-primary);
-  --background-checked: rgba(var(--ion-color-primary-rgb), 0.35);
-}
-
-// --- Checkbox / Radio ---
-ion-checkbox {
-  --checkbox-background-checked: var(--ion-color-primary);
-  --checkbox-border-color-checked: var(--ion-color-primary);
-  --checkmark-color: #fff;
-}
-ion-radio {
-  --color-checked: var(--ion-color-primary);
-}
-
-// --- Range / Slider ---
-ion-range {
-  --bar-background-active: var(--ion-color-primary);
-  --bar-background-active-opacity: 1;
-  --knob-background: var(--ion-color-primary);
-}
-
-// --- Progress bar ---
-ion-progress-bar {
-  --progress-background: var(--ion-color-primary);
-}
-
-// --- Pull to refresh spinner ---
-ion-refresher-content {
-  --spinner-color: var(--ion-color-primary);
-}
-
-// --- Enlaces, chips y “detalle” (flecha) en items ---
-a, .link, .chip.ion-color-primary {
-  color: var(--ion-color-primary);
-}
-ion-item {
-  --detail-icon-color: var(--ion-color-primary);
-}
-
-// --- Skeleton shimmer (cuando cargan listas) ---
-.skeleton-text::after {
-  background-image: linear-gradient(
-    90deg,
-    rgba(var(--ion-color-primary-rgb), 0.06) 0,
-    rgba(var(--ion-color-primary-rgb), 0.12) 20%,
-    rgba(var(--ion-color-primary-rgb), 0.06) 40%
-  );
-}
-
-// --- Toasts / Alerts (si se usa primary) ---
-ion-toast.ion-color-primary,
-ion-alert.ion-color-primary {
-  --background: var(--ion-color-primary);
-  --color: #fff;
+  --ion-color-primary-shade: #{darken($brand-primary, 10%)};
+  --ion-color-primary-tint: #{lighten($brand-primary, 10%)};
 }
