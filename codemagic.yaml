@@ -16,24 +16,6 @@ workflows:
           set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
-
-      - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
-        script: |
-          set -e
-          echo "🧹 Limpiando www y plataformas…"
-          rm -rf www platforms/android || true
-
-          echo "🧽 Borrando caches comunes…"
-          rm -rf node_modules/.cache || true
-          rm -rf ~/.gradle/caches/build-cache-* || true
-
-          echo "🔎 Verificando branding (assets y SCSS overrides)…"
-          ls -lah src/assets/img || true
-          test -f src/theme/overrides.scss && echo "✔ overrides.scss presente" || echo "⚠ overrides.scss NO encontrado"
-
-      - name: Compilar web (Ionic build) con estilos actualizados
-        script: |
-          set -e
           ionic build
 
       - name: Preparar recursos (icon/adaptive)
@@ -50,17 +32,30 @@ workflows:
           ionic cordova resources android --force --icon || true
           echo "✅ cordova-res ejecutado."
 
+      - name: Limpiar cachés/artefactos para forzar assets nuevos
+        script: |
+          set -e
+          echo "🧹 Limpiando www y plataformas…"
+          rm -rf www platforms/android || true
+
+          echo "🧽 Borrando caches comunes de tooling…"
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
+
+          echo "🔎 Mostrando assets reemplazados:"
+          ls -lah src/assets/img || true
+
       - name: Preparar plataforma Android (limpio)
         script: |
           set -e
-          # Como ya borramos platforms/android, solo añadimos
+          ionic cordova platform rm android || true
           ionic cordova platform add android
 
-          # Verifica que el logo se haya copiado (por <resource-file> en config.xml)
+          # Verifica que el logo exista en el árbol Android (copiado por <resource-file>, opcional)
           test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png \
-            || echo "⚠️  No se encontró logo.png en res/ (no es crítico si la preferencia usa el archivo del proyecto)"
+            || echo "⚠️  No se encontró logo.png en res/ (no es crítico si la preferencia ya usa el archivo del proyecto)"
 
-          echo "▶ Preferencia en config.xml:"
+          echo "▶ Mostrando preferencia en config.xml (para auditar):"
           grep -n "AndroidWindowSplashScreenAnimatedIcon" config.xml || echo "⚠️  No se ve la preferencia en config.xml"
 
           echo "🧼 cordova clean android (fuerza recompilación completa)…"
