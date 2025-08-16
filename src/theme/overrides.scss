@@ -1,28 +1,26 @@
 // =========================
 // overrides.scss
-// Quita todo el naranja y usa el color institucional
+// Fuerza todo el tema a usar rojo institucional
 // =========================
 
 // ---- Marca
-$brand-primary: #C8102E !default; // <-- cambia aquí si necesitas otro HEX
+$brand-primary: #C8102E !default; // Rojo institucional
 $brand-primary-rgb: 200, 16, 46;
 $brand-primary-contrast: #FFFFFF;
 $brand-primary-shade: darken($brand-primary, 10%);
 $brand-primary-tint:  lighten($brand-primary, 10%);
 
-// Algunas vistas usan "warning" para acentos (naranja por defecto en Ionic).
-// Lo igualamos a la marca para eliminar naranjas remanentes.
+// Igualamos warning para eliminar naranjas
 $brand-warning: $brand-primary !default;
 $brand-warning-rgb: $brand-primary-rgb;
 $brand-warning-contrast: #FFFFFF;
 $brand-warning-shade: darken($brand-warning, 10%);
 $brand-warning-tint:  lighten($brand-warning, 10%);
 
-// ---- Variables globales (modo claro)
+// ---- Variables globales
 :root,
 :root .ios,
 :root .md {
-  /* PRIMARY */
   --ion-color-primary: #{$brand-primary};
   --ion-color-primary-rgb: #{$brand-primary-rgb};
   --ion-color-primary-contrast: #{$brand-primary-contrast};
@@ -30,7 +28,6 @@ $brand-warning-tint:  lighten($brand-warning, 10%);
   --ion-color-primary-shade: #{$brand-primary-shade};
   --ion-color-primary-tint: #{$brand-primary-tint};
 
-  /* WARNING (naranja por defecto) -> ahora tu marca */
   --ion-color-warning: #{$brand-warning};
   --ion-color-warning-rgb: #{$brand-warning-rgb};
   --ion-color-warning-contrast: #{$brand-warning-contrast};
@@ -38,12 +35,11 @@ $brand-warning-tint:  lighten($brand-warning, 10%);
   --ion-color-warning-shade: #{$brand-warning-shade};
   --ion-color-warning-tint: #{$brand-warning-tint};
 
-  /* Algunas páginas del core usan estos alias */
   --core-color-primary: var(--ion-color-primary);
   --core-color-primary-rgb: var(--ion-color-primary-rgb);
 }
 
-// ---- Variables globales (modo oscuro)
+// ---- Dark theme
 [data-theme="dark"],
 body.dark,
 html.dark {
@@ -65,8 +61,9 @@ html.dark {
   --core-color-primary-rgb: var(--ion-color-primary-rgb);
 }
 
-/* Asegurar utilidades Ionic */
-.ion-color-primary {
+/* Asegurar utilidades */
+.ion-color-primary,
+.ion-color-warning {
   --ion-color-base: var(--ion-color-primary) !important;
   --ion-color-base-rgb: var(--ion-color-primary-rgb) !important;
   --ion-color-contrast: var(--ion-color-primary-contrast) !important;
@@ -74,125 +71,82 @@ html.dark {
   --ion-color-shade: var(--ion-color-primary-shade) !important;
   --ion-color-tint: var(--ion-color-primary-tint) !important;
 }
-.ion-color-warning {
-  --ion-color-base: var(--ion-color-warning) !important;
-  --ion-color-base-rgb: var(--ion-color-warning-rgb) !important;
-  --ion-color-contrast: var(--ion-color-warning-contrast) !important;
-  --ion-color-contrast-rgb: var(--ion-color-warning-contrast-rgb) !important;
-  --ion-color-shade: var(--ion-color-warning-shade) !important;
-  --ion-color-tint: var(--ion-color-warning-tint) !important;
-}
 
 /* =========================
-   Componentes con naranjas típicos
+   Fix: Subrayados tabs / segment / tabbar
    ========================= */
 
-/* Segment (tabs superiores) */
+/* Tabs superiores */
 ion-segment {
-  --indicator-color: var(--ion-color-primary);
-  --indicator-color-checked: var(--ion-color-primary);
-}
-.segment-button-indicator .indicator-background {
-  background: var(--ion-color-primary) !important;
+  --indicator-color: var(--ion-color-primary) !important;
 }
 ion-segment-button {
-  --color-checked: var(--ion-color-primary);
+  --color-checked: var(--ion-color-primary) !important;
+}
+.segment-button-indicator .indicator-background {
+  background-color: var(--ion-color-primary) !important;
 }
 
-/* Tab bar inferior: seleccionado, indicadores y badges */
+/* Tabs inferiores */
 ion-tab-bar {
-  --color-selected: var(--ion-color-primary);
-  --indicator-color: var(--ion-color-primary); /* subrayado inferior */
+  --color-selected: var(--ion-color-primary) !important;
+  --indicator-color: var(--ion-color-primary) !important;
 }
 ion-tab-button {
-  --color-selected: var(--ion-color-primary);
+  --color-selected: var(--ion-color-primary) !important;
 }
 ion-tab-bar ion-badge,
 ion-tab-button ion-badge {
-  /* Muchas vistas lo ponen como "warning" */
   background: var(--ion-color-primary) !important;
   color: #fff !important;
 }
 
-/* Botones (por si algún estilo usa warning) */
-ion-button.ion-color-primary,
-button.ion-color-primary {
-  --background: var(--ion-color-primary);
-  --background-hover: var(--ion-color-primary-shade);
-  --background-activated: var(--ion-color-primary-shade);
-  --background-focused: var(--ion-color-primary-tint);
-  --color: var(--ion-color-primary-contrast);
-  --border-color: var(--ion-color-primary);
-}
-ion-button.ion-color-warning,
+/* =========================
+   Otros componentes
+   ========================= */
+ion-button,
+button.ion-color-primary,
 button.ion-color-warning {
-  --background: var(--ion-color-warning);
-  --color: #fff;
+  --background: var(--ion-color-primary) !important;
+  --background-hover: var(--ion-color-primary-shade) !important;
+  --background-activated: var(--ion-color-primary-shade) !important;
+  --background-focused: var(--ion-color-primary-tint) !important;
+  --color: #fff !important;
 }
 
-/* Badges en general */
-ion-badge.ion-color-primary,
-ion-badge[color="primary"],
-ion-badge.ion-color-warning,
-ion-badge[color="warning"] {
-  --background: var(--ion-color-primary);
-  --color: #fff;
+ion-badge,
+ion-badge.ion-color-warning {
+  --background: var(--ion-color-primary) !important;
+  --color: #fff !important;
 }
 
-/* Toggles / Switch */
-ion-toggle {
-  --handle-background-checked: var(--ion-color-primary);
-  --background-checked: rgba(var(--ion-color-primary-rgb), 0.35);
-}
-
-/* Checkbox / Radio */
-ion-checkbox {
-  --checkbox-background-checked: var(--ion-color-primary);
-  --checkbox-border-color-checked: var(--ion-color-primary);
-  --checkmark-color: #fff;
-}
-ion-radio {
-  --color-checked: var(--ion-color-primary);
-}
-
-/* Range / Slider */
-ion-range {
-  --bar-background-active: var(--ion-color-primary);
-  --bar-background-active-opacity: 1;
-  --knob-background: var(--ion-color-primary);
-}
-
-/* Progress bar */
-ion-progress-bar {
-  --progress-background: var(--ion-color-primary);
-}
-
-/* Pull to refresh */
+ion-checkbox,
+ion-radio,
+ion-toggle,
+ion-range,
+ion-progress-bar,
 ion-refresher-content {
-  --spinner-color: var(--ion-color-primary);
+  --color-checked: var(--ion-color-primary) !important;
+  --handle-background-checked: var(--ion-color-primary) !important;
+  --checkbox-background-checked: var(--ion-color-primary) !important;
+  --checkbox-border-color-checked: var(--ion-color-primary) !important;
+  --checkmark-color: #fff !important;
+  --bar-background-active: var(--ion-color-primary) !important;
+  --knob-background: var(--ion-color-primary) !important;
+  --progress-background: var(--ion-color-primary) !important;
+  --spinner-color: var(--ion-color-primary) !important;
 }
 
-/* Links, chips, detalles de items */
-a, .link, .chip.ion-color-primary, .chip.ion-color-warning {
-  color: var(--ion-color-primary);
-}
-ion-item {
-  --detail-icon-color: var(--ion-color-primary);
+a, .link, ion-item {
+  color: var(--ion-color-primary) !important;
+  --detail-icon-color: var(--ion-color-primary) !important;
 }
 
-/* Skeleton shimmer */
 .skeleton-text::after {
   background-image: linear-gradient(
     90deg,
     rgba(var(--ion-color-primary-rgb), 0.06) 0,
     rgba(var(--ion-color-primary-rgb), 0.12) 20%,
     rgba(var(--ion-color-primary-rgb), 0.06) 40%
-  );
-}
-
-/* Toasts / Alerts si usan warning */
-ion-toast.ion-color-warning,
-ion-alert.ion-color-warning {
-  --background: var(--ion-color-primary);
-  --color: #fff;
+  ) !important;
 }
