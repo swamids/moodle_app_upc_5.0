@@ -20,16 +20,10 @@ workflows:
       - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
         script: |
           set -e
-          echo "🧹 Limpiando www y plataformas…"
           rm -rf www platforms/android || true
-
-          echo "🧽 Borrando caches comunes…"
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
-
-          echo "🔎 Verificando branding (assets y SCSS overrides)…"
-          ls -lah src/assets/img || true
-          test -f src/theme/overrides.scss && echo "✔ overrides.scss presente" || echo "⚠ overrides.scss NO encontrado"
+          echo "✔ override existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
 
       - name: Compilar web (Ionic build) con estilos actualizados
         script: |
@@ -41,30 +35,17 @@ workflows:
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
-
-          # Adaptive icon para que cordova-res no falle
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
-
           ionic cordova resources android --force --icon || true
-          echo "✅ cordova-res ejecutado."
 
       - name: Preparar plataforma Android (limpio)
         script: |
           set -e
-          # Como ya borramos platforms/android, solo añadimos
           ionic cordova platform add android
-
-          # Verifica que el logo se haya copiado (por <resource-file> en config.xml)
-          test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png \
-            || echo "⚠️  No se encontró logo.png en res/ (no es crítico si la preferencia usa el archivo del proyecto)"
-
-          echo "▶ Preferencia en config.xml:"
-          grep -n "AndroidWindowSplashScreenAnimatedIcon" config.xml || echo "⚠️  No se ve la preferencia en config.xml"
-
-          echo "🧼 cordova clean android (fuerza recompilación completa)…"
           ionic cordova clean android || true
+          test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png || echo "⚠ logo.png no copiado a res/ (no crítico)"
 
       - name: Compilar APK (DEBUG)
         script: |
