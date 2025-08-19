@@ -1,6 +1,6 @@
 // =========================
 // overrides.scss
-// Tema a rojo institucional + fixes de indicators
+// Rojo institucional + fixes definitivos de indicators y textos
 // =========================
 
 // ---- Marca
@@ -10,14 +10,14 @@ $brand-primary-contrast: #FFFFFF;
 $brand-primary-shade: darken($brand-primary, 10%);
 $brand-primary-tint:  lighten($brand-primary, 10%);
 
-// Igualamos warning (naranja por defecto) para eliminar restos
+// Igualamos warning (naranja por defecto)
 $brand-warning: $brand-primary !default;
 $brand-warning-rgb: $brand-primary-rgb;
 $brand-warning-contrast: #FFFFFF;
 $brand-warning-shade: darken($brand-warning, 10%);
 $brand-warning-tint:  lighten($brand-warning, 10%);
 
-// ---- Variables globales (claro)
+// ---- Variables globales
 :root,
 :root .ios,
 :root .md {
@@ -39,7 +39,6 @@ $brand-warning-tint:  lighten($brand-warning, 10%);
   --core-color-primary-rgb: var(--ion-color-primary-rgb);
 }
 
-// ---- Variables globales (oscuro)
 [data-theme="dark"],
 body.dark,
 html.dark {
@@ -61,7 +60,7 @@ html.dark {
   --core-color-primary-rgb: var(--ion-color-primary-rgb);
 }
 
-/* Utilidades Ionic */
+/* Utilidades */
 .ion-color-primary,
 .ion-color-warning {
   --ion-color-base: var(--ion-color-primary) !important;
@@ -72,9 +71,9 @@ html.dark {
   --ion-color-tint: var(--ion-color-primary-tint) !important;
 }
 
-/* =========================
-   Toolbar buttons siguen siendo 'clear'
-   ========================= */
+/* -------------------------
+   Toolbar buttons siguen 'clear'
+------------------------- */
 ion-toolbar ion-buttons ion-button,
 ion-header   ion-buttons ion-button,
 ion-toolbar  ion-button[fill="clear"],
@@ -100,66 +99,98 @@ ion-button[color="warning"] {
   --color: #fff !important;
 }
 
-/* =========================
-   FIX definitivo: indicators (subrayados)
-   Hay varias implementaciones según vista/version; cubrimos todas.
-   ========================= */
+/* -------------------------
+   FIX DEFINITIVO: TABS SUPERIORES (ion-segment)
+------------------------- */
 
-/* SEGMENT (tabs superiores) */
+/* Variables del indicator */
+core-tabs ion-segment,
+.core-tabs ion-segment,
 ion-segment {
   --indicator-color: var(--ion-color-primary) !important;
   --indicator-color-checked: var(--ion-color-primary) !important;
 }
-/* Shadow parts del indicator */
+
+/* Texto del tab activo (a veces lo fuerzan a warning) */
+core-tabs ion-segment-button.segment-button-checked,
+.core-tabs ion-segment-button.segment-button-checked,
+ion-segment-button.segment-button-checked,
+core-tabs ion-segment-button[aria-checked="true"],
+.core-tabs ion-segment-button[aria-checked="true"],
+ion-segment-button[aria-checked="true"],
+ion-segment-button.ion-activated {
+  color: var(--ion-color-primary) !important;
+  --color-checked: var(--ion-color-primary) !important;
+}
+
+/* Indicator mediante Shadow Parts */
+core-tabs ion-segment::part(indicator),
+core-tabs ion-segment::part(indicator-background),
+.core-tabs ion-segment::part(indicator),
+.core-tabs ion-segment::part(indicator-background),
 ion-segment::part(indicator),
 ion-segment::part(indicator-background) {
   background: var(--ion-color-primary) !important;
 }
+
 /* Implementación antigua basada en divs */
+core-tabs .segment-button-indicator,
+core-tabs .segment-button-indicator .indicator-background,
+.core-tabs .segment-button-indicator,
+.core-tabs .segment-button-indicator .indicator-background,
 .segment-button-indicator,
 .segment-button-indicator .indicator-background {
   background-color: var(--ion-color-primary) !important;
 }
-/* Por si usan border-bottom o pseudo-elementos */
-ion-segment-button.segment-button-checked,
-ion-segment-button[aria-checked="true"] {
-  border-color: var(--ion-color-primary) !important;
-}
+
+/* Fallback por si usan pseudo-elemento para subrayado */
+core-tabs ion-segment-button.segment-button-checked::after,
+.core-tabs ion-segment-button.segment-button-checked::after,
 ion-segment-button.segment-button-checked::after,
+core-tabs ion-segment-button[aria-checked="true"]::after,
+.core-tabs ion-segment-button[aria-checked="true"]::after,
 ion-segment-button[aria-checked="true"]::after {
   content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 2px;
-  background: var(--ion-color-primary) !important;
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2px; background: var(--ion-color-primary) !important;
 }
 
-/* TAB BAR inferior */
-ion-tab-bar {
+/* -------------------------
+   FIX DEFINITIVO: TAB BAR INFERIOR
+------------------------- */
+ion-tab-bar,
+.tabbar,
+.tabs,
+.tabs-bottom {
   --color-selected: var(--ion-color-primary) !important;
   --indicator-color: var(--ion-color-primary) !important;
 }
-/* Shadow part del highlight/indicator */
+
+/* Indicador/hightlight */
 ion-tab-bar::part(highlight),
-ion-tab-bar::part(indicator) {
-  background: var(--ion-color-primary) !important;
-}
-/* Implementación antigua con .tab-highlight */
+ion-tab-bar::part(indicator),
 .tabbar .tab-highlight,
 .tab-highlight {
   background: var(--ion-color-primary) !important;
 }
 
-/* Badges de la barra inferior */
+/* Texto/ícono del tab seleccionado */
+ion-tab-button.tab-selected,
+ion-tab-button[aria-selected="true"],
+.tabbar .tab-selected {
+  color: var(--ion-color-primary) !important;
+}
+
+/* Badges en la barra inferior */
 ion-tab-bar ion-badge,
 ion-tab-button ion-badge {
   background: var(--ion-color-primary) !important;
   color: #fff !important;
 }
 
-/* =========================
-   Otros componentes (se mantienen en rojo)
-   ========================= */
+/* -------------------------
+   Otros componentes (rojo)
+------------------------- */
 ion-badge { --background: var(--ion-color-primary) !important; --color: #fff !important; }
 ion-toggle { --handle-background-checked: var(--ion-color-primary) !important; --background-checked: rgba(var(--ion-color-primary-rgb), .35) !important; }
 ion-checkbox { --checkbox-background-checked: var(--ion-color-primary) !important; --checkbox-border-color-checked: var(--ion-color-primary) !important; --checkmark-color: #fff !important; }
