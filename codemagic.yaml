@@ -1,4 +1,7 @@
 workflows:
+  # ===========================
+  # DEBUG (sin firma) — sin cambios en esencia
+  # ===========================
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
@@ -54,3 +57,83 @@ workflows:
 
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
+
+
+  # ===========================
+  # RELEASE (AAB firmado) — para Google Play
+  # ===========================
+  build-android-release:
+    name: Moodle App Build for Android (RELEASE AAB firmado para Play)
+    max_build_duration: 60
+
+    environment:
+      node: 20.18.0
+      java: 17
+      vars:
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
+      groups:
+        - keystore_group # (opcional) si agrupas secretos en Codemagic
+
+    scripts:
+      - name: Instalar dependencias
+        script: |
+          set -e
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
+
+      - name: Limpiar y compilar web (Ionic)
+        script: |
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          ionic build
+
+      - name: Recursos (icon/adaptive) y plataforma
+        script: |
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
+
+          ionic cordova platform add android
+          ionic cordova clean android || true
+
+      - name: Restaurar keystore y crear build.json (release bundle)
+        script: |
+          set -e
+          [ -n "$CM_KEYSTORE" ] || { echo "❌ Falta CM_KEYSTORE (base64)"; exit 1; }
+          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
+
+          cat >/tmp/build.json <<'JSON'
+          {
+            "android": {
+              "release": {
+                "keystore": "/tmp/release.keystore",
+                "storePassword": "$CM_KEYSTORE_PASSWORD",
+                "alias": "$CM_KEY_ALIAS",
+                "password": "$CM_KEY_PASSWORD",
+                "packageType": "bundle"
+              }
+            }
+          }
+          JSON
+
+          echo "▶ build.json creado:"
+          cat /tmp/build.json | sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g'
+
+      - name: Build RELEASE AAB firmado
+        script: |
+          set -e
+          # Cordova toma /tmp/build.json vía --buildConfig
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json
+
+          echo "▶ Artefactos generados:"
+          find platforms/android/app/build/outputs -type f | sed 's/^/ - /'
+
+    artifacts:
+      - platforms/android/app/build/outputs/**/*.aab
+      - platforms/android/app/build/outputs/**/*.apk
