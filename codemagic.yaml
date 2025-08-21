@@ -1,7 +1,7 @@
 workflows:
-  # ===========================
-  # DEBUG (sin firma) — sin cambios en esencia
-  # ===========================
+  # ------------------------------------------------------------
+  # DEBUG: APK sin firma (rápido para validar branding y estilos)
+  # ------------------------------------------------------------
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
@@ -26,9 +26,9 @@ workflows:
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
-          echo "✔ override existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
+          echo "✔ overrides.scss existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
 
-      - name: Compilar web (Ionic build) con estilos actualizados
+      - name: Compilar web (Ionic) con estilos actualizados
         script: |
           set -e
           ionic build
@@ -58,10 +58,14 @@ workflows:
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
-
-  # ===========================
-  # RELEASE (AAB firmado) — para Google Play
-  # ===========================
+  # -----------------------------------------------------------------
+  # RELEASE: Firma con keystore y genera AAB para publicar en Play
+  # Secretos requeridos (en Codemagic → Environment):
+  #  - CM_KEYSTORE (base64 del .keystore)
+  #  - CM_KEYSTORE_PASSWORD
+  #  - CM_KEY_ALIAS
+  #  - CM_KEY_PASSWORD
+  # -----------------------------------------------------------------
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
     max_build_duration: 60
@@ -72,8 +76,6 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-      groups:
-        - keystore_group # (opcional) si agrupas secretos en Codemagic
 
     scripts:
       - name: Instalar dependencias
@@ -108,32 +110,36 @@ workflows:
           [ -n "$CM_KEYSTORE" ] || { echo "❌ Falta CM_KEYSTORE (base64)"; exit 1; }
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
 
-          cat >/tmp/build.json <<'JSON'
+          # Heredoc SIN comillas para expandir variables
+          cat >/tmp/build.json <<EOF
           {
             "android": {
               "release": {
                 "keystore": "/tmp/release.keystore",
-                "storePassword": "$CM_KEYSTORE_PASSWORD",
-                "alias": "$CM_KEY_ALIAS",
-                "password": "$CM_KEY_PASSWORD",
+                "storePassword": "${CM_KEYSTORE_PASSWORD}",
+                "alias": "${CM_KEY_ALIAS}",
+                "password": "${CM_KEY_PASSWORD}",
                 "packageType": "bundle"
               }
             }
           }
-          JSON
+          EOF
 
-          echo "▶ build.json creado:"
+          echo "▶ build.json creado (se ocultan contraseñas):"
           cat /tmp/build.json | sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g'
 
       - name: Build RELEASE AAB firmado
         script: |
           set -e
-          # Cordova toma /tmp/build.json vía --buildConfig
-          ionic cordova build android --prod --release --buildConfig=/tmp/build.json
+          # Forzar bundle también por flag
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
           echo "▶ Artefactos generados:"
-          find platforms/android/app/build/outputs -type f | sed 's/^/ - /'
+          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
+
+          # Validar que existe el AAB
+          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB"; exit 1; }
 
     artifacts:
-      - platforms/android/app/build/outputs/**/*.aab
+      - platforms/android/app/build/outputs/bundle/release/*.aab
       - platforms/android/app/build/outputs/**/*.apk
