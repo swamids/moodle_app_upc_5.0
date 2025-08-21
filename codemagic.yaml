@@ -52,7 +52,7 @@ workflows:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group   # Asegúrate que el grupo se llama exactamente así en Codemagic
+        - keystore_group   # Debe existir con: CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
     scripts:
       - name: Instalar dependencias
         script: |
@@ -76,49 +76,41 @@ workflows:
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
-
           ionic cordova platform add android
           ionic cordova clean android || true
 
-      - name: Preflight keystore (verificar variables, decodificar y validar alias)
+      - name: Restaurar keystore y validar alias (solo Bash, sin Python)
         script: |
           set -e
-          # 1) Verificar que existan las 4 variables
+          # 1) Comprobar variables del grupo
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
             if [ -z "$(eval echo \$$v)" ]; then
-              echo "❌ Falta la variable $v"
+              echo "❌ Falta la variable $v en el grupo keystore_group"
               exit 1
             fi
           done
-          echo "✅ Variables presentes."
+          echo "✅ Variables del keystore presentes."
 
-          # 2) Crear script Python a archivo y ejecutarlo (evita conflictos con YAML)
-          cat >/tmp/dec_keystore.py <<'PYCODE'
-import os, base64, sys
-b64 = os.environ['CM_KEYSTORE'].encode('utf-8')
-try:
-    raw = base64.b64decode(b64)
-except Exception as e:
-    print("❌ No se pudo decodificar CM_KEYSTORE como base64:", e)
-    sys.exit(1)
-open('/tmp/release.keystore','wb').write(raw)
-print("✅ /tmp/release.keystore restaurado ({} bytes)".format(len(raw)))
-PYCODE
-          python3 /tmp/dec_keystore.py
+          # 2) Decodificar base64 de forma portátil (GNU vs BSD/macOS)
+          if base64 --help >/dev/null 2>&1; then DEC_OPT="--decode"; else DEC_OPT="-D"; fi
+          printf "%s" "$CM_KEYSTORE" | base64 $DEC_OPT > /tmp/release.keystore
 
-          # 3) Mostrar alias y validar el alias especificado
-          echo "▶ Alias del keystore:"
-          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" | grep -E 'Alias name:|Nombre de alias:' || true
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "❌ /tmp/release.keystore no se restauró correctamente."
+            exit 1
+          fi
+          echo "✅ Keystore restaurado en /tmp/release.keystore"
 
+          # 3) Validar alias
           if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" >/dev/null 2>&1; then
-            echo "❌ El alias '$CM_KEY_ALIAS' no existe o la contraseña es incorrecta."
+            echo "❌ Alias '$CM_KEY_ALIAS' inválido o contraseña incorrecta."
+            echo "▶ Alias disponibles:"
+            keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" | grep -E 'Alias name:|Nombre de alias:' || true
             exit 1
           fi
           echo "✅ Alias '$CM_KEY_ALIAS' verificado."
 
-      - name: Crear build.json (release bundle) y compilar AAB firmado
-        script: |
-          set -e
+          # 4) Crear build.json para firmar bundle
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -132,17 +124,15 @@ PYCODE
             }
           }
           EOF
-
-          echo "▶ build.json creado:"
+          echo "▶ build.json listo (ocultando contraseñas):"
           cat /tmp/build.json | sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g'
 
-          # Compilar AAB firmado
+      - name: Build RELEASE AAB firmado
+        script: |
+          set -e
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
-
-          echo "▶ Artefactos encontrados:"
+          echo "▶ Artefactos generados:"
           find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
-
-          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
 
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
