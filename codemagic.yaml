@@ -52,7 +52,7 @@ workflows:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
       groups:
-        - keystore_group   # <<— Debe llamarse EXACTAMENTE como tu grupo en Codemagic
+        - keystore_group   # Asegúrate que el grupo se llama exactamente así en Codemagic
     scripts:
       - name: Instalar dependencias
         script: |
@@ -85,12 +85,15 @@ workflows:
           set -e
           # 1) Verificar que existan las 4 variables
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            [ -n "$(eval echo \$$v)" ] || { echo "❌ Falta la variable $v"; exit 1; }
+            if [ -z "$(eval echo \$$v)" ]; then
+              echo "❌ Falta la variable $v"
+              exit 1
+            fi
           done
           echo "✅ Variables presentes."
 
-          # 2) Decodificar con Python para evitar diferencias de base64 GNU/BSD
-          python3 - <<'PY'
+          # 2) Crear script Python a archivo y ejecutarlo (evita conflictos con YAML)
+          cat >/tmp/dec_keystore.py <<'PYCODE'
 import os, base64, sys
 b64 = os.environ['CM_KEYSTORE'].encode('utf-8')
 try:
@@ -100,14 +103,15 @@ except Exception as e:
     sys.exit(1)
 open('/tmp/release.keystore','wb').write(raw)
 print("✅ /tmp/release.keystore restaurado ({} bytes)".format(len(raw)))
-PY
+PYCODE
+          python3 /tmp/dec_keystore.py
 
-          # 3) Mostrar alias reales del keystore y comprobar coincidencia
+          # 3) Mostrar alias y validar el alias especificado
           echo "▶ Alias del keystore:"
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" | grep -E 'Alias name:|Nombre de alias:' || true
 
           if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" >/dev/null 2>&1; then
-            echo "❌ El alias '$CM_KEY_ALIAS' no existe en este keystore o la contraseña es incorrecta."
+            echo "❌ El alias '$CM_KEY_ALIAS' no existe o la contraseña es incorrecta."
             exit 1
           fi
           echo "✅ Alias '$CM_KEY_ALIAS' verificado."
@@ -132,7 +136,7 @@ PY
           echo "▶ build.json creado:"
           cat /tmp/build.json | sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g'
 
-          # Compilar AAB
+          # Compilar AAB firmado
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
           echo "▶ Artefactos encontrados:"
