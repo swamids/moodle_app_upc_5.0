@@ -1,39 +1,30 @@
 workflows:
-  # ------------------------------------------------------------
-  # DEBUG: APK sin firma (rápido para validar branding y estilos)
-  # ------------------------------------------------------------
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-
     scripts:
       - name: Instalar dependencias
         script: |
           set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
-
       - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
         script: |
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
-          echo "✔ overrides.scss existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
-
       - name: Compilar web (Ionic) con estilos actualizados
         script: |
           set -e
           ionic build
-
-      - name: Preparar recursos (icon/adaptive)
+      - name: Preparar recursos (icon/adaptive) y plataforma
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
@@ -42,41 +33,26 @@ workflows:
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
-
-      - name: Preparar plataforma Android (limpio)
-        script: |
-          set -e
           ionic cordova platform add android
           ionic cordova clean android || true
-          test -f platforms/android/app/src/main/res/drawable-nodpi/logo.png || echo "⚠ logo.png no copiado a res/ (no crítico)"
-
       - name: Compilar APK (DEBUG)
         script: |
           set -e
           ionic cordova build android --debug -- --packageType=apk
-
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
-  # -----------------------------------------------------------------
-  # RELEASE: Firma con keystore y genera AAB para publicar en Play
-  # Secretos requeridos (en Codemagic → Environment):
-  #  - CM_KEYSTORE (base64 del .keystore)
-  #  - CM_KEYSTORE_PASSWORD
-  #  - CM_KEY_ALIAS
-  #  - CM_KEY_PASSWORD
-  # -----------------------------------------------------------------
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-
+      groups:
+        - keystore_group   # <<— Debe llamarse EXACTAMENTE como tu grupo en Codemagic
     scripts:
       - name: Instalar dependencias
         script: |
@@ -104,13 +80,41 @@ workflows:
           ionic cordova platform add android
           ionic cordova clean android || true
 
-      - name: Restaurar keystore y crear build.json (release bundle)
+      - name: Preflight keystore (verificar variables, decodificar y validar alias)
         script: |
           set -e
-          [ -n "$CM_KEYSTORE" ] || { echo "❌ Falta CM_KEYSTORE (base64)"; exit 1; }
-          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
+          # 1) Verificar que existan las 4 variables
+          for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            [ -n "$(eval echo \$$v)" ] || { echo "❌ Falta la variable $v"; exit 1; }
+          done
+          echo "✅ Variables presentes."
 
-          # Heredoc SIN comillas para expandir variables
+          # 2) Decodificar con Python para evitar diferencias de base64 GNU/BSD
+          python3 - <<'PY'
+import os, base64, sys
+b64 = os.environ['CM_KEYSTORE'].encode('utf-8')
+try:
+    raw = base64.b64decode(b64)
+except Exception as e:
+    print("❌ No se pudo decodificar CM_KEYSTORE como base64:", e)
+    sys.exit(1)
+open('/tmp/release.keystore','wb').write(raw)
+print("✅ /tmp/release.keystore restaurado ({} bytes)".format(len(raw)))
+PY
+
+          # 3) Mostrar alias reales del keystore y comprobar coincidencia
+          echo "▶ Alias del keystore:"
+          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" | grep -E 'Alias name:|Nombre de alias:' || true
+
+          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "❌ El alias '$CM_KEY_ALIAS' no existe en este keystore o la contraseña es incorrecta."
+            exit 1
+          fi
+          echo "✅ Alias '$CM_KEY_ALIAS' verificado."
+
+      - name: Crear build.json (release bundle) y compilar AAB firmado
+        script: |
+          set -e
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -125,20 +129,16 @@ workflows:
           }
           EOF
 
-          echo "▶ build.json creado (se ocultan contraseñas):"
+          echo "▶ build.json creado:"
           cat /tmp/build.json | sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g'
 
-      - name: Build RELEASE AAB firmado
-        script: |
-          set -e
-          # Forzar bundle también por flag
+          # Compilar AAB
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
-          echo "▶ Artefactos generados:"
+          echo "▶ Artefactos encontrados:"
           find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
 
-          # Validar que existe el AAB
-          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB"; exit 1; }
+          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
 
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
