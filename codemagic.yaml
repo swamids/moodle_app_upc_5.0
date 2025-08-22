@@ -1,4 +1,58 @@
 workflows:
+  build-android-debug:
+    name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
+    max_build_duration: 60
+    environment:
+      node: 20.18.0
+      java: 17
+      vars:
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
+    scripts:
+      - name: Instalar dependencias
+        script: |
+          set -e
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
+
+      - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
+        script: |
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
+          echo "✔ override existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
+
+      - name: Compilar web (Ionic build) con estilos actualizados
+        script: |
+          set -e
+          ionic build
+
+      - name: Preparar recursos (icon/adaptive)
+        script: |
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
+
+      - name: Preparar plataforma Android (limpio)
+        script: |
+          set -e
+          ionic cordova platform add android
+          ionic cordova clean android || true
+
+      - name: Compilar APK (DEBUG)
+        script: |
+          set -e
+          ionic cordova build android --debug -- --packageType=apk
+
+    artifacts:
+      - platforms/android/app/build/outputs/apk/debug/*.apk
+
+
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB)
     max_build_duration: 60
@@ -7,8 +61,7 @@ workflows:
       node: 20.18.0
       java: 17
       groups:
-        - keystore_group         # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
-        - firebase_group         # GOOGLE_SERVICES_JSON_B64
+        - keystore_group       # CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD, GOOGLE_SERVICES_JSON_B64
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
@@ -24,9 +77,11 @@ workflows:
         script: |
           set -e
           rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
           ionic build
 
-      - name: Recursos (icon/adaptive)
+      - name: Recursos (icon/adaptive) y plataforma
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
@@ -35,47 +90,45 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-      - name: Preparar plataforma
-        script: |
-          set -e
           ionic cordova platform add android
           ionic cordova clean android || true
 
       - name: Restaurar google-services.json (Firebase)
         script: |
           set -e
-          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then
-            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo firebase_group"
+          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'."
+            echo "   Cárgalo con el base64 de tu google-services.json para ${PACKAGE_NAME}."
             exit 1
           fi
 
-          # escribir archivo en la raíz
-          printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d > google-services.json
-          ls -lah google-services.json
+          echo "▶ Restaurando google-services.json…"
+          printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d > /tmp/google-services.json
 
-          # si tienes el <resource-file> en config.xml, Cordova lo copiará a app/google-services.json durante el build.
-          # Aun así, lo colocamos también manualmente por si algún plugin lo espera ya en /app/:
-          mkdir -p platforms/android/app
-          cp -f google-services.json platforms/android/app/google-services.json
+          APP_RES_PATH="platforms/android/app/src/release/google-services.json"
+          APP_ROOT_PATH="platforms/android/app/google-services.json"
+          mkdir -p "$(dirname "$APP_RES_PATH")"
 
-          echo "▶ Verificación rápida:"
-          APPID=$(xmllint --xpath "string(//widget/@id)" config.xml)
-          echo "ApplicationId en config.xml: $APPID"
-          grep -q "\"package_name\": \"$APPID\"" google-services.json \
-            && echo "✅ google-services.json coincide con $APPID" \
-            || { echo "❌ El google-services.json no corresponde a $APPID"; exit 1; }
+          cp /tmp/google-services.json "$APP_RES_PATH"
+          cp /tmp/google-services.json "$APP_ROOT_PATH"
 
-      - name: Restaurar keystore y validar alias (solo Bash, sin Python)
+          echo "▶ Validando package_name esperado (${PACKAGE_NAME})…"
+          if ! grep -q "\"package_name\"\\s*:\\s*\"${PACKAGE_NAME}\"" "$APP_ROOT_PATH"; then
+            echo "❌ El google-services.json no corresponde al package ${PACKAGE_NAME}."
+            exit 1
+          fi
+
+          ls -lah "$APP_ROOT_PATH"
+
+      - name: Restaurar keystore y crear build.json (release bundle)
         script: |
           set -e
-          [ -n "$CM_KEYSTORE" ] || { echo "❌ Falta CM_KEYSTORE (base64)"; exit 1; }
+          for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            if [ -z "${!v:-}" ]; then echo "❌ Falta $v en keystore_group"; exit 1; fi
+          done
           printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
-          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/dev/null
-          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" -keypass "$CM_KEY_PASSWORD" >/dev/null
-          echo "✅ Keystore OK"
 
-          # build.json en /tmp para Cordova
-          cat > /tmp/build.json <<'JSON'
+          cat >/tmp/build.json <<'JSON'
           {
             "android": {
               "release": {
@@ -83,24 +136,21 @@ workflows:
                 "storePassword": "$CM_KEYSTORE_PASSWORD",
                 "alias": "$CM_KEY_ALIAS",
                 "password": "$CM_KEY_PASSWORD",
-                "packageType": "bundle"
+                "keystoreType": ""
               }
             }
           }
           JSON
-          # Expandir variables
-          sed -i.bak \
-            -e "s|\$CM_KEYSTORE_PASSWORD|$CM_KEYSTORE_PASSWORD|g" \
-            -e "s|\$CM_KEY_ALIAS|$CM_KEY_ALIAS|g" \
-            -e "s|\$CM_KEY_PASSWORD|$CM_KEY_PASSWORD|g" /tmp/build.json
+          echo "✅ build.json creado."
 
       - name: Build RELEASE AAB firmado
         script: |
           set -e
+          # Cordova usará /tmp/build.json para firmar
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json --packageType=bundle
 
           echo "► Artefactos generados:"
-          find platforms/android/app/build/outputs -type f -maxdepth 3 | sed 's|^|  - |'
+          find platforms/android/app/build/outputs -type f | sed 's/^/ - /'
 
     artifacts:
       - platforms/android/app/build/outputs/**/*.aab
