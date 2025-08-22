@@ -1,4 +1,7 @@
 workflows:
+  # ------------------------------------------------------------
+  # DEBUG: APK sin firma (rápido para validar branding y estilos)
+  # ------------------------------------------------------------
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
@@ -21,14 +24,13 @@ workflows:
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
-          echo "✔ override existe?"; test -f src/theme/overrides.scss && tail -n 3 src/theme/overrides.scss || echo "⚠ overrides.scss NO encontrado"
 
-      - name: Compilar web (Ionic build) con estilos actualizados
+      - name: Compilar web (Ionic) con estilos actualizados
         script: |
           set -e
           ionic build
 
-      - name: Preparar recursos (icon/adaptive)
+      - name: Preparar recursos (icon/adaptive) y plataforma
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
@@ -38,9 +40,6 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-      - name: Preparar plataforma Android (limpio)
-        script: |
-          set -e
           ionic cordova platform add android
           ionic cordova clean android || true
 
@@ -53,15 +52,23 @@ workflows:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
 
+  # -----------------------------------------------------------------
+  # RELEASE: Firma con keystore y genera AAB para publicar en Play
+  # Requiere en el grupo 'keystore_group':
+  #  - CM_KEYSTORE (base64 del .keystore/.jks)
+  #  - CM_KEYSTORE_PASSWORD
+  #  - CM_KEY_ALIAS
+  #  - CM_KEY_PASSWORD
+  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
+  # -----------------------------------------------------------------
   build-android-release:
-    name: Moodle App Build for Android (RELEASE AAB)
+    name: Moodle App Build for Android (RELEASE AAB firmado para Play)
     max_build_duration: 60
-
     environment:
       node: 20.18.0
       java: 17
       groups:
-        - keystore_group       # CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD, GOOGLE_SERVICES_JSON_B64
+        - keystore_group
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
@@ -78,7 +85,6 @@ workflows:
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
-          rm -rf ~/.gradle/caches/build-cache-* || true
           ionic build
 
       - name: Recursos (icon/adaptive) y plataforma
@@ -97,38 +103,69 @@ workflows:
         script: |
           set -e
           if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
-            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'."
-            echo "   Cárgalo con el base64 de tu google-services.json para ${PACKAGE_NAME}."
-            exit 1
+            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
           fi
 
           echo "▶ Restaurando google-services.json…"
-          printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d > /tmp/google-services.json
+          # Decodificar base64 de forma robusta (--decode | -d | -D)
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
 
-          APP_RES_PATH="platforms/android/app/src/release/google-services.json"
-          APP_ROOT_PATH="platforms/android/app/google-services.json"
-          mkdir -p "$(dirname "$APP_RES_PATH")"
+          # Copiar a rutas esperadas por gradle/plugins
+          mkdir -p platforms/android/app src
+          cp -f /tmp/google-services.json platforms/android/app/google-services.json
+          mkdir -p platforms/android/app/src/release
+          cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
 
-          cp /tmp/google-services.json "$APP_RES_PATH"
-          cp /tmp/google-services.json "$APP_ROOT_PATH"
-
-          echo "▶ Validando package_name esperado (${PACKAGE_NAME})…"
-          if ! grep -q "\"package_name\"\\s*:\\s*\"${PACKAGE_NAME}\"" "$APP_ROOT_PATH"; then
-            echo "❌ El google-services.json no corresponde al package ${PACKAGE_NAME}."
+          echo "▶ Validando package_name esperado ($PACKAGE_NAME)…"
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
+            echo "✅ google-services.json contiene $PACKAGE_NAME"
+          else
+            echo "❌ El google-services.json no corresponde a $PACKAGE_NAME"
+            echo "   Paquetes encontrados:"
+            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
             exit 1
           fi
 
-          ls -lah "$APP_ROOT_PATH"
-
-      - name: Restaurar keystore y crear build.json (release bundle)
+      - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
           set -e
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            if [ -z "${!v:-}" ]; then echo "❌ Falta $v en keystore_group"; exit 1; fi
+            [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
           done
-          printf "%s" "$CM_KEYSTORE" | base64 -d > /tmp/release.keystore
 
-          cat >/tmp/build.json <<'JSON'
+          echo "▶ Restaurando /tmp/release.keystore…"
+          ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
+
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "❌ Keystore vacío o corrupto"; exit 1
+          fi
+
+          echo "▶ Validando STOREPASS…"
+          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
+            echo "❌ Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
+          fi
+
+          echo "▶ Detectando tipo de keystore…"
+          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
+          [ -z "$TYPE" ] && TYPE="jks"
+          echo "✅ Keystore type: $TYPE"
+
+          echo "▶ Validando ALIAS y KEYPASS…"
+          if ! keytool -list -v \
+            -keystore /tmp/release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -alias "$CM_KEY_ALIAS" \
+            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "❌ Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
+          fi
+          echo "✅ Alias y key password válidos."
+
+          echo "▶ Creando /tmp/build.json…"
+          cat >/tmp/build.json <<EOF
           {
             "android": {
               "release": {
@@ -136,22 +173,25 @@ workflows:
                 "storePassword": "$CM_KEYSTORE_PASSWORD",
                 "alias": "$CM_KEY_ALIAS",
                 "password": "$CM_KEY_PASSWORD",
-                "keystoreType": ""
+                "keystoreType": "$TYPE",
+                "packageType": "bundle"
               }
             }
           }
-          JSON
-          echo "✅ build.json creado."
+          EOF
+          echo "Contenido (oculto passwords):"
+          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
       - name: Build RELEASE AAB firmado
         script: |
           set -e
-          # Cordova usará /tmp/build.json para firmar
-          ionic cordova build android --prod --release --buildConfig=/tmp/build.json --packageType=bundle
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
-          echo "► Artefactos generados:"
-          find platforms/android/app/build/outputs -type f | sed 's/^/ - /'
+          echo "▶ Artefactos generados:"
+          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
+
+          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
 
     artifacts:
-      - platforms/android/app/build/outputs/**/*.aab
+      - platforms/android/app/build/outputs/bundle/release/*.aab
       - platforms/android/app/build/outputs/**/*.apk
