@@ -107,6 +107,7 @@
       <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
       <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     </config-file>
+    <resource-file src="google-services.json" target="app/google-services.json" />
   </platform>
 
   <!-- ===== iOS ===== -->
