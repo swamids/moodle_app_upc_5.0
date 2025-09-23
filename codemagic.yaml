@@ -11,6 +11,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
+        ANDROID_NDK_VERSION: "26.1.10909125"  # soporte 16KB
     scripts:
       - name: Instalar dependencias
         script: |
@@ -35,12 +36,38 @@ workflows:
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
           [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
+
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          ionic cordova platform add android
+          # Importante para 16KB: usar cordova-android 13 (AGP 8.x compatible)
+          ionic cordova platform add android@13
+
+          # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
+          # Gradle 8.4
+          sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' \
+            platforms/android/gradle/wrapper/gradle-wrapper.properties
+
+          # AGP 8.3.2
+          sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' \
+            platforms/android/build.gradle
+
+          # Kotlin 1.9.24 (si corresponde)
+          if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
+            sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+          fi
+
+          # Propiedades de compilación
+          {
+            echo "android.useAndroidX=true"
+            echo "android.enableJetifier=true"
+            echo "android.ndkVersion=${ANDROID_NDK_VERSION}"
+            echo "cdvCompileSdkVersion=35"
+          } >> platforms/android/gradle.properties
+
+          # Limpieza cordova
           ionic cordova clean android || true
 
       - name: Compilar APK (DEBUG)
@@ -72,6 +99,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
+        ANDROID_NDK_VERSION: "26.1.10909125"  # soporte 16KB
 
     scripts:
       - name: Instalar dependencias
@@ -87,16 +115,41 @@ workflows:
           rm -rf node_modules/.cache || true
           ionic build
 
-      - name: Recursos (icon/adaptive) y plataforma
+      - name: Recursos (icon/adaptive) y plataforma + Ajustes 16KB
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+
           mkdir -p resources/android
           cp resources/icon.png resources/android/icon-foreground.png
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          ionic cordova platform add android
+          # Plataforma con soporte AGP 8.x
+          ionic cordova platform add android@13
+
+          # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
+          # Gradle 8.4
+          sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' \
+            platforms/android/gradle/wrapper/gradle-wrapper.properties
+
+          # AGP 8.3.2
+          sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' \
+            platforms/android/build.gradle
+
+          # Kotlin 1.9.24 (si corresponde)
+          if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
+            sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+          fi
+
+          # Propiedades de compilación
+          {
+            echo "android.useAndroidX=true"
+            echo "android.enableJetifier=true"
+            echo "android.ndkVersion=${ANDROID_NDK_VERSION}"
+            echo "cdvCompileSdkVersion=35"
+          } >> platforms/android/gradle.properties
+
           ionic cordova clean android || true
 
       - name: Restaurar google-services.json (Firebase)
@@ -107,12 +160,10 @@ workflows:
           fi
 
           echo "▶ Restaurando google-services.json…"
-          # Decodificar base64 de forma robusta (--decode | -d | -D)
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
 
-          # Copiar a rutas esperadas por gradle/plugins
           mkdir -p platforms/android/app src
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           mkdir -p platforms/android/app/src/release
@@ -182,7 +233,7 @@ workflows:
           echo "Contenido (oculto passwords):"
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: Build RELEASE AAB firmado
+      - name: Build RELEASE AAB firmado (compatibilidad 16KB)
         script: |
           set -e
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
