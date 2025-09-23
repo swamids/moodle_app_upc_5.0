@@ -18,43 +18,6 @@ workflows:
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      - name: Configurar idioma por defecto (moodle.config.json)
-        script: |
-          set -e
-          echo '{"app_id":"com.upc.moodleapp","appname":"Moodle UPC","versioncode":10000,"versionname":"1.0.0","languages":["es","en"]}' > moodle.config.json
-          echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
-
-      - name: Descargar/actualizar paquetes de idioma (ES) — FIX
-        script: |
-          set -e
-          mkdir -p src/assets/lang
-          HAVE_SCRIPT=false
-
-          # 1) Script oficial si existe en package.json
-          if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
-            echo "▶ Ejecutando: npm run lang:update-langpacks"
-            npm run lang:update-langpacks && HAVE_SCRIPT=true
-          fi
-
-          # 2) Script del repo si existe (fallback)
-          if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
-            echo "▶ Ejecutando: scripts/update_langpacks.sh"
-            bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
-          fi
-
-          # 3) Último recurso: crear es.json mínimo para no romper el build
-          if [ ! -f src/assets/lang/es.json ]; then
-            echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
-            echo '{"app.title":"Moodle UPC","app.ok":"Aceptar","app.cancel":"Cancelar","app.back":"Atrás"}' > src/assets/lang/es.json
-          fi
-
-          # 4) Verificación
-          if [ ! -s src/assets/lang/es.json ]; then
-            echo "❌ src/assets/lang/es.json no existe o está vacío."
-            exit 1
-          fi
-          echo "✅ Idioma ES disponible en src/assets/lang/es.json"
-
       - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
         script: |
           set -e
@@ -83,7 +46,7 @@ workflows:
       - name: Compilar APK (DEBUG)
         script: |
           set -e
-          ionic cordova build android --debug -- --packageType=apk --stacktrace --info --warning-mode=all
+          ionic cordova build android --debug -- --packageType=apk
 
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
@@ -92,7 +55,7 @@ workflows:
   # -----------------------------------------------------------------
   # RELEASE: Firma con keystore y genera AAB para publicar en Play
   # Requiere en el grupo 'keystore_group':
-  #  - CM_KEYSTORE (base64 del .keystore/.jks o .p12)
+  #  - CM_KEYSTORE (base64 del .keystore/.jks)
   #  - CM_KEYSTORE_PASSWORD
   #  - CM_KEY_ALIAS
   #  - CM_KEY_PASSWORD
@@ -116,31 +79,6 @@ workflows:
           set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
-
-      - name: Configurar idioma por defecto (moodle.config.json)
-        script: |
-          set -e
-          echo '{"app_id":"com.upc.moodleapp","appname":"Moodle UPC","versioncode":10000,"versionname":"1.0.0","languages":["es","en"]}' > moodle.config.json
-
-      - name: Descargar/actualizar paquetes de idioma (ES) — FIX
-        script: |
-          set -e
-          mkdir -p src/assets/lang
-          HAVE_SCRIPT=false
-          if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
-            npm run lang:update-langpacks && HAVE_SCRIPT=true
-          fi
-          if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
-            bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
-          fi
-          if [ ! -f src/assets/lang/es.json ]; then
-            echo '{"app.title":"Moodle UPC","app.ok":"Aceptar","app.cancel":"Cancelar","app.back":"Atrás"}' > src/assets/lang/es.json
-          fi
-          if [ ! -s src/assets/lang/es.json ]; then
-            echo "❌ src/assets/lang/es.json no existe o está vacío."
-            exit 1
-          fi
-          echo "✅ Idioma ES disponible en src/assets/lang/es.json"
 
       - name: Limpiar y compilar web (Ionic)
         script: |
@@ -167,75 +105,91 @@ workflows:
           if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
             echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
           fi
+
+          echo "▶ Restaurando google-services.json…"
+          # Decodificar base64 de forma robusta (--decode | -d | -D)
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
+
+          # Copiar a rutas esperadas por gradle/plugins
           mkdir -p platforms/android/app src
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           mkdir -p platforms/android/app/src/release
           cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
-          echo "✅ google-services.json listo"
 
-      - name: Sanity check del keystore y detección de tipo (JKS/PKCS12)
+          echo "▶ Validando package_name esperado ($PACKAGE_NAME)…"
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
+            echo "✅ google-services.json contiene $PACKAGE_NAME"
+          else
+            echo "❌ El google-services.json no corresponde a $PACKAGE_NAME"
+            echo "   Paquetes encontrados:"
+            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
+            exit 1
+          fi
+
+      - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
           set -e
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
             [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
           done
+
+          echo "▶ Restaurando /tmp/release.keystore…"
           ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
-          [ -s /tmp/release.keystore ] || { echo "❌ Keystore vacío o corrupto"; exit 1; }
 
-          # Validar storepass y detectar tipo
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "❌ Keystore vacío o corrupto"; exit 1
+          fi
+
+          echo "▶ Validando STOREPASS…"
           if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
             echo "❌ Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
           fi
+
+          echo "▶ Detectando tipo de keystore…"
           TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
           [ -z "$TYPE" ] && TYPE="jks"
           echo "✅ Keystore type: $TYPE"
-          echo "$TYPE" > /tmp/keystore_type
 
-      - name: Generar build.json (seguro, sin imprimir secretos)
-        script: |
-          set -e
-          # Node lee el tipo desde /tmp/keystore_type (sin depender de variables de entorno)
-          node - <<'JS'
-          const fs = require('fs');
-          let ksType = 'jks';
-          try { ksType = fs.readFileSync('/tmp/keystore_type', 'utf8').trim() || 'jks'; } catch(e) {}
-          const cfg = {
-            android: {
-              release: {
-                keystore: "/tmp/release.keystore",
-                storePassword: process.env.CM_KEYSTORE_PASSWORD,
-                alias: process.env.CM_KEY_ALIAS,
-                password: process.env.CM_KEY_PASSWORD,
-                keystoreType: ksType,
-                packageType: "bundle"
+          echo "▶ Validando ALIAS y KEYPASS…"
+          if ! keytool -list -v \
+            -keystore /tmp/release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -alias "$CM_KEY_ALIAS" \
+            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "❌ Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
+          fi
+          echo "✅ Alias y key password válidos."
+
+          echo "▶ Creando /tmp/build.json…"
+          cat >/tmp/build.json <<EOF
+          {
+            "android": {
+              "release": {
+                "keystore": "/tmp/release.keystore",
+                "storePassword": "$CM_KEYSTORE_PASSWORD",
+                "alias": "$CM_KEY_ALIAS",
+                "password": "$CM_KEY_PASSWORD",
+                "keystoreType": "$TYPE",
+                "packageType": "bundle"
               }
             }
-          };
-          fs.writeFileSync('/tmp/build.json', JSON.stringify(cfg));
-          JS
-          echo "✅ /tmp/build.json generado"
+          }
+          EOF
+          echo "Contenido (oculto passwords):"
+          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: Build RELEASE AAB firmado (verbose + stacktrace)
+      - name: Build RELEASE AAB firmado
         script: |
           set -e
-          # Cordova + Gradle en modo verbose/stacktrace
-          set +e
-          ( ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle --stacktrace --info --warning-mode=all ) 2>&1 | tee /tmp/gradle.out
-          EXIT=$?
-          set -e
-          if [ $EXIT -ne 0 ]; then
-            echo "❌ Falló el build. Últimas 200 líneas de gradle.out:"
-            tail -n 200 /tmp/gradle.out || true
-            exit $EXIT
-          fi
-          echo "✅ Build release completado"
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
-          # Comprobar artefacto
+          echo "▶ Artefactos generados:"
+          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
+
           test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
 
     artifacts:
