@@ -49,10 +49,9 @@ workflows:
           ionic cordova prepare android
 
           echo "▶ Árbol platforms/android:"
-          find platforms/android -maxdepth 3 -type f -name "gradle-wrapper.properties" -o -name "build.gradle" | sed 's#^#  - #'
+          find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
           # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
-          # Localiza gradle-wrapper.properties de forma robusta
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
@@ -104,7 +103,8 @@ workflows:
             fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              (cd platforms/android && "$WRAP" --version && "$WRAP" :app:assembleDebug --stacktrace --info --no-daemon)
+              "$WRAP" --version
+              "$WRAP" :app:assembleDebug --stacktrace --info --no-daemon
               EXIT=$?
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
@@ -169,7 +169,7 @@ workflows:
           ionic cordova prepare android
 
           echo "▶ Árbol platforms/android:"
-          find platforms/android -maxdepth 3 -type f -name "gradle-wrapper.properties" -o -name "build.gradle" | sed 's#^#  - #'
+          find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
           # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
@@ -301,8 +301,8 @@ workflows:
             fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              (cd platforms/android && "$WRAP" --version \
-                && "$WRAP" :app:bundleRelease --stacktrace --info --no-daemon)
+              "$WRAP" --version
+              "$WRAP" :app:bundleRelease --stacktrace --info --no-daemon
               EXIT=$?
               echo "▶ Dump de build.gradle (app) para diagnóstico"
               sed -n '1,200p' platforms/android/app/build.gradle || true
