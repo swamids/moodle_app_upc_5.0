@@ -18,7 +18,6 @@ workflows:
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      # Idioma por defecto y lenguajes permitidos
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
@@ -34,31 +33,38 @@ workflows:
           JSON
           echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
 
-      # Descargar/actualizar paquetes de idioma (robusto para /bin/sh)
       - name: Descargar/actualizar paquetes de idioma (ES) — FIX
         script: |
           set -e
           mkdir -p src/assets/lang
           HAVE_SCRIPT=false
+
+          # 1) Script oficial si existe en package.json
           if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
             echo "▶ Ejecutando: npm run lang:update-langpacks"
             npm run lang:update-langpacks && HAVE_SCRIPT=true
           fi
+
+          # 2) Script del repo si existe (fallback)
           if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
             echo "▶ Ejecutando: scripts/update_langpacks.sh"
             bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
           fi
+
+          # 3) Último recurso: crear es.json mínimo para no romper el build
           if [ ! -f src/assets/lang/es.json ]; then
             echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
             cat > src/assets/lang/es.json <<'EOF'
-{
-  "app.title": "Moodle UPC",
-  "app.ok": "Aceptar",
-  "app.cancel": "Cancelar",
-  "app.back": "Atrás"
-}
-EOF
+          {
+            "app.title": "Moodle UPC",
+            "app.ok": "Aceptar",
+            "app.cancel": "Cancelar",
+            "app.back": "Atrás"
+          }
+          EOF
           fi
+
+          # 4) Verificación
           if [ ! -s src/assets/lang/es.json ]; then
             echo "❌ src/assets/lang/es.json no existe o está vacío."
             exit 1
@@ -127,7 +133,6 @@ EOF
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      # Idioma por defecto y lenguajes permitidos
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
@@ -143,31 +148,38 @@ EOF
           JSON
           echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
 
-      # Descargar/actualizar paquetes de idioma (robusto para /bin/sh)
       - name: Descargar/actualizar paquetes de idioma (ES) — FIX
         script: |
           set -e
           mkdir -p src/assets/lang
           HAVE_SCRIPT=false
+
+          # 1) Script oficial si existe en package.json
           if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
             echo "▶ Ejecutando: npm run lang:update-langpacks"
             npm run lang:update-langpacks && HAVE_SCRIPT=true
           fi
+
+          # 2) Script del repo si existe (fallback)
           if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
             echo "▶ Ejecutando: scripts/update_langpacks.sh"
             bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
           fi
+
+          # 3) Último recurso: crear es.json mínimo para no romper el build
           if [ ! -f src/assets/lang/es.json ]; then
             echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
             cat > src/assets/lang/es.json <<'EOF'
-{
-  "app.title": "Moodle UPC",
-  "app.ok": "Aceptar",
-  "app.cancel": "Cancelar",
-  "app.back": "Atrás"
-}
-EOF
+          {
+            "app.title": "Moodle UPC",
+            "app.ok": "Aceptar",
+            "app.cancel": "Cancelar",
+            "app.back": "Atrás"
+          }
+          EOF
           fi
+
+          # 4) Verificación
           if [ ! -s src/assets/lang/es.json ]; then
             echo "❌ src/assets/lang/es.json no existe o está vacío."
             exit 1
@@ -258,26 +270,36 @@ EOF
           echo "✅ Alias y key password válidos."
 
           echo "▶ Creando /tmp/build.json…"
-          cat >/tmp/build.json <<EOF
+          cat >/tmp/build.json <<'EOF'
           {
             "android": {
               "release": {
                 "keystore": "/tmp/release.keystore",
-                "storePassword": "$CM_KEYSTORE_PASSWORD",
-                "alias": "$CM_KEY_ALIAS",
-                "password": "$CM_KEY_PASSWORD",
-                "keystoreType": "$TYPE",
+                "storePassword": "<hidden>",
+                "alias": "<hidden>",
+                "password": "<hidden>",
+                "keystoreType": "auto",
                 "packageType": "bundle"
               }
             }
           }
           EOF
-          echo "Contenido (oculto passwords):"
-          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
       - name: Build RELEASE AAB firmado
         script: |
           set -e
+          # Sustituir los placeholders del build.json por variables reales sin exponerlas en logs
+          sed -i.bak "s/<hidden>/$CM_KEYSTORE_PASSWORD/g" /tmp/build.json
+          sed -i.bak "0,/<hidden>/s//${CM_KEY_ALIAS}/" /tmp/build.json
+          sed -i.bak "0,/<hidden>/s//${CM_KEY_PASSWORD}/" /tmp/build.json
+          # Detectar tipo real del keystore
+          TYPE="jks"
+          if keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo2.txt 2>/dev/null; then
+            TYPE=$(grep -i "Keystore type:" /tmp/ksinfo2.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
+            [ -z "$TYPE" ] && TYPE="jks"
+          fi
+          sed -i.bak "s/\"keystoreType\": \"auto\"/\"keystoreType\": \"${TYPE}\"/" /tmp/build.json
+
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
 
           echo "▶ Artefactos generados:"
