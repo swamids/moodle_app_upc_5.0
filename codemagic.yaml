@@ -31,7 +31,7 @@ workflows:
           set -e
           ionic build
 
-      - name: Preparar recursos (icon/adaptive) y plataforma
+      - name: Preparar recursos (icon/adaptive) y plataforma + Ajustes 16KB
         script: |
           set -e
           [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
@@ -42,28 +42,38 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Importante para 16KB: usar cordova-android 13 (AGP 8.x compatible)
+          # Plataforma con soporte AGP 8.x
           ionic cordova platform add android@13
 
+          # Asegurar árbol completo (genera wrapper, gradle props, etc.)
+          ionic cordova prepare android
+
           # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
-          # Gradle 8.4
-          sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' \
-            platforms/android/gradle/wrapper/gradle-wrapper.properties
-
-          # AGP 8.3.2
-          sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' \
-            platforms/android/build.gradle
-
-          # Kotlin 1.9.24 (si corresponde)
-          if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
-            sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+          # Localiza gradle-wrapper.properties de forma robusta
+          WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
+          if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
+            echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
+            sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
+          else
+            echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
           fi
 
-          # Propiedades de compilación
+          # Forzar AGP 8.3.2 en el build.gradle raíz
+          if [ -f platforms/android/build.gradle ]; then
+            sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' platforms/android/build.gradle
+            # Actualiza Kotlin si está definido
+            if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
+              sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+            fi
+          else
+            echo "⚠ No se encontró platforms/android/build.gradle (aún)."
+          fi
+
+          # Propiedades para NDK y compileSdk
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
-            echo "android.ndkVersion=${ANDROID_NDK_VERSION}"
+            echo "android.ndkVersion=${ANDROID_NDK_VERSION:-26.1.10909125}"
             echo "cdvCompileSdkVersion=35"
           } >> platforms/android/gradle.properties
 
@@ -128,25 +138,31 @@ workflows:
           # Plataforma con soporte AGP 8.x
           ionic cordova platform add android@13
 
+          # Asegurar árbol completo (genera wrapper, gradle props, etc.)
+          ionic cordova prepare android
+
           # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
-          # Gradle 8.4
-          sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' \
-            platforms/android/gradle/wrapper/gradle-wrapper.properties
-
-          # AGP 8.3.2
-          sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' \
-            platforms/android/build.gradle
-
-          # Kotlin 1.9.24 (si corresponde)
-          if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
-            sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+          WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
+          if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
+            echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
+            sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
+          else
+            echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
           fi
 
-          # Propiedades de compilación
+          if [ -f platforms/android/build.gradle ]; then
+            sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' platforms/android/build.gradle
+            if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
+              sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
+            fi
+          else
+            echo "⚠ No se encontró platforms/android/build.gradle (aún)."
+          fi
+
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
-            echo "android.ndkVersion=${ANDROID_NDK_VERSION}"
+            echo "android.ndkVersion=${ANDROID_NDK_VERSION:-26.1.10909125}"
             echo "cdvCompileSdkVersion=35"
           } >> platforms/android/gradle.properties
 
