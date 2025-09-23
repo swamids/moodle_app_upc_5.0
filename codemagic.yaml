@@ -49,7 +49,6 @@ workflows:
           ionic cordova prepare android
 
           # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
-          # Localiza gradle-wrapper.properties de forma robusta
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
@@ -69,21 +68,37 @@ workflows:
             echo "⚠ No se encontró platforms/android/build.gradle (aún)."
           fi
 
-          # Propiedades para NDK y compileSdk
+          # Propiedades para NDK, compileSdk y memoria Gradle
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
             echo "android.ndkVersion=${ANDROID_NDK_VERSION:-26.1.10909125}"
             echo "cdvCompileSdkVersion=35"
+            echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # Limpieza cordova
+          # Diagnóstico de versiones
+          echo "---- build.gradle (root) preview ----"
+          sed -n '1,120p' platforms/android/build.gradle || true
+          echo "---- gradle.properties ----"
+          cat platforms/android/gradle.properties || true
+
           ionic cordova clean android || true
 
-      - name: Compilar APK (DEBUG)
+      - name: Compilar APK (DEBUG) con diagnóstico
         script: |
           set -e
-          ionic cordova build android --debug -- --packageType=apk
+          set +e
+          ionic cordova build android --debug -- --packageType=apk --stacktrace --info
+          EXIT=$?
+          if [ $EXIT -ne 0 ]; then
+            echo "⚠ cordova build falló, intento Gradle directo con stacktrace…"
+            if [ -x platforms/android/gradlew ]; then
+              (cd platforms/android && ./gradlew --version && ./gradlew :app:assembleDebug --stacktrace --info)
+              EXIT=$?
+            fi
+          fi
+          exit $EXIT
 
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
@@ -164,7 +179,13 @@ workflows:
             echo "android.enableJetifier=true"
             echo "android.ndkVersion=${ANDROID_NDK_VERSION:-26.1.10909125}"
             echo "cdvCompileSdkVersion=35"
+            echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
+
+          echo "---- build.gradle (root) preview ----"
+          sed -n '1,120p' platforms/android/build.gradle || true
+          echo "---- gradle.properties ----"
+          cat platforms/android/gradle.properties || true
 
           ionic cordova clean android || true
 
@@ -249,15 +270,25 @@ workflows:
           echo "Contenido (oculto passwords):"
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: Build RELEASE AAB firmado (compatibilidad 16KB)
+      - name: Build RELEASE AAB firmado (compatibilidad 16KB) con fallback y stacktrace
         script: |
           set -e
-          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
-
-          echo "▶ Artefactos generados:"
-          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
-
-          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
+          set +e
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle --stacktrace --info
+          EXIT=$?
+          if [ $EXIT -ne 0 ]; then
+            echo "⚠ cordova build falló, intento Gradle directo con stacktrace…"
+            if [ -x platforms/android/gradlew ]; then
+              (cd platforms/android && ./gradlew --version \
+                 && ./gradlew :app:bundleRelease --stacktrace --info --no-daemon)
+              EXIT=$?
+              echo "▶ Dump de build.gradle (app) para diagnóstico"
+              sed -n '1,200p' platforms/android/app/build.gradle || true
+            else
+              echo "❌ No existe platforms/android/gradlew (wrapper)."
+            fi
+          fi
+          exit $EXIT
 
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
