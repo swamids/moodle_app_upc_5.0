@@ -21,16 +21,7 @@ workflows:
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
-          # Ajusta "languages" a ["es"] (solo español) o ["es","en"] (bilingüe)
-          cat > moodle.config.json <<'JSON'
-          {
-            "app_id": "com.upc.moodleapp",
-            "appname": "Moodle UPC",
-            "versioncode": 10000,
-            "versionname": "1.0.0",
-            "languages": ["es","en"]
-          }
-          JSON
+          echo '{"app_id":"com.upc.moodleapp","appname":"Moodle UPC","versioncode":10000,"versionname":"1.0.0","languages":["es","en"]}' > moodle.config.json
           echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
 
       - name: Descargar/actualizar paquetes de idioma (ES) — FIX
@@ -54,14 +45,7 @@ workflows:
           # 3) Último recurso: crear es.json mínimo para no romper el build
           if [ ! -f src/assets/lang/es.json ]; then
             echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
-            cat > src/assets/lang/es.json <<'EOF'
-          {
-            "app.title": "Moodle UPC",
-            "app.ok": "Aceptar",
-            "app.cancel": "Cancelar",
-            "app.back": "Atrás"
-          }
-          EOF
+            echo '{"app.title":"Moodle UPC","app.ok":"Aceptar","app.cancel":"Cancelar","app.back":"Atrás"}' > src/assets/lang/es.json
           fi
 
           # 4) Verificación
@@ -136,15 +120,7 @@ workflows:
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
-          cat > moodle.config.json <<'JSON'
-          {
-            "app_id": "com.upc.moodleapp",
-            "appname": "Moodle UPC",
-            "versioncode": 10000,
-            "versionname": "1.0.0",
-            "languages": ["es","en"]
-          }
-          JSON
+          echo '{"app_id":"com.upc.moodleapp","appname":"Moodle UPC","versioncode":10000,"versionname":"1.0.0","languages":["es","en"]}' > moodle.config.json
 
       - name: Descargar/actualizar paquetes de idioma (ES) — FIX
         script: |
@@ -158,14 +134,7 @@ workflows:
             bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
           fi
           if [ ! -f src/assets/lang/es.json ]; then
-            cat > src/assets/lang/es.json <<'EOF'
-          {
-            "app.title": "Moodle UPC",
-            "app.ok": "Aceptar",
-            "app.cancel": "Cancelar",
-            "app.back": "Atrás"
-          }
-          EOF
+            echo '{"app.title":"Moodle UPC","app.ok":"Aceptar","app.cancel":"Cancelar","app.back":"Atrás"}' > src/assets/lang/es.json
           fi
           if [ ! -s src/assets/lang/es.json ]; then
             echo "❌ src/assets/lang/es.json no existe o está vacío."
@@ -230,23 +199,25 @@ workflows:
       - name: Generar build.json (seguro, sin imprimir secretos)
         script: |
           set -e
-          KEYSTORE_TYPE=$(cat /tmp/keystore_type)
-          node -e '
-            const fs = require("fs");
-            const cfg = {
-              android: {
-                release: {
-                  keystore: "/tmp/release.keystore",
-                  storePassword: process.env.CM_KEYSTORE_PASSWORD,
-                  alias: process.env.CM_KEY_ALIAS,
-                  password: process.env.CM_KEY_PASSWORD,
-                  keystoreType: KEYSTORE_TYPE,
-                  packageType: "bundle"
-                }
+          # Node lee el tipo desde /tmp/keystore_type (sin depender de variables de entorno)
+          node - <<'JS'
+          const fs = require('fs');
+          let ksType = 'jks';
+          try { ksType = fs.readFileSync('/tmp/keystore_type', 'utf8').trim() || 'jks'; } catch(e) {}
+          const cfg = {
+            android: {
+              release: {
+                keystore: "/tmp/release.keystore",
+                storePassword: process.env.CM_KEYSTORE_PASSWORD,
+                alias: process.env.CM_KEY_ALIAS,
+                password: process.env.CM_KEY_PASSWORD,
+                keystoreType: ksType,
+                packageType: "bundle"
               }
-            };
-            fs.writeFileSync("/tmp/build.json", JSON.stringify(cfg));
-          ' KEYSTORE_TYPE="$KEYSTORE_TYPE"
+            }
+          };
+          fs.writeFileSync('/tmp/build.json', JSON.stringify(cfg));
+          JS
           echo "✅ /tmp/build.json generado"
 
       - name: Build RELEASE AAB firmado (verbose + stacktrace)
