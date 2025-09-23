@@ -2127,7 +2127,7 @@
   "core.login.changepasswordsupportsubject": "Need help changing my password",
   "core.login.confirmdeletesite": "Are you sure you want to remove the account on {{sitename}}?",
   "core.login.connect": "Connect!",
-  "core.login.connecttomoodle": "Connect to Moodle",
+  "core.login.connecttomoodle": "Conectarse a Moodle",
   "core.login.connecttomoodleapp": "You are trying to connect to a regular Moodle site. Please download the official Moodle app to access this site.",
   "core.login.connecttoworkplaceapp": "You are trying to connect to a Moodle Workplace site. Please download the Moodle Workplace app to access this site.",
   "core.login.createaccount": "Create my new account",
