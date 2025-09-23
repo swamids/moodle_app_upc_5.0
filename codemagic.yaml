@@ -42,7 +42,7 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x (dejamos versión que trae cordova-android@13)
+          # Plataforma con soporte AGP 8.x (de cordova-android@13)
           ionic cordova platform add android@13
 
           # Asegurar árbol completo (wrapper, gradle props, etc.)
@@ -70,8 +70,28 @@ workflows:
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
+          # ---- PARCHE AGP8: build.gradle (app) ----
+          APP_GRADLE="platforms/android/app/build.gradle"
+          if [ -f "$APP_GRADLE" ]; then
+            echo "▶ Parcheando $APP_GRADLE para AGP8…"
+            # 1) lintOptions -> lint { abortOnError false }
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE"
+            # 2) Eliminar buildToolsVersion …
+            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$APP_GRADLE"
+          fi
+
+          # ---- PARCHE AGP8: build.gradle (root) si existiera lo mismo ----
+          ROOT_GRADLE="platforms/android/build.gradle"
+          if [ -f "$ROOT_GRADLE" ]; then
+            echo "▶ Revisando $ROOT_GRADLE…"
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$ROOT_GRADLE" || true
+            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$ROOT_GRADLE" || true
+          fi
+
+          echo "---- build.gradle (app) preview ----"
+          sed -n '1,200p' "$APP_GRADLE" || true
           echo "---- build.gradle (root) preview ----"
-          sed -n '1,140p' platforms/android/build.gradle || true
+          sed -n '1,160p' "$ROOT_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -97,7 +117,7 @@ workflows:
               "$WRAP" projects --warning-mode=all
               "$WRAP" :app:properties --warning-mode=all
               "$WRAP" cdvPrintProps --warning-mode=all || true
-              "$WRAP" :app:assembleDebug --stacktrace --info --debug --warning-mode=all --no-daemon
+              "$WRAP" :app:assembleDebug --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
@@ -155,7 +175,7 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x (dejamos la versión de cordova-android@13)
+          # Plataforma con soporte AGP 8.x (de cordova-android@13)
           ionic cordova platform add android@13
 
           # Asegurar árbol completo (wrapper, gradle props, etc.)
@@ -183,8 +203,24 @@ workflows:
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
+          # ---- PARCHE AGP8: build.gradle (app & root) ----
+          APP_GRADLE="platforms/android/app/build.gradle"
+          ROOT_GRADLE="platforms/android/build.gradle"
+          if [ -f "$APP_GRADLE" ]; then
+            echo "▶ Parcheando $APP_GRADLE para AGP8…"
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE"
+            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$APP_GRADLE"
+          fi
+          if [ -f "$ROOT_GRADLE" ]; then
+            echo "▶ Parcheando $ROOT_GRADLE (si aplica)…"
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$ROOT_GRADLE" || true
+            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$ROOT_GRADLE" || true
+          fi
+
+          echo "---- build.gradle (app) preview ----"
+          sed -n '1,220p' "$APP_GRADLE" || true
           echo "---- build.gradle (root) preview ----"
-          sed -n '1,140p' platforms/android/build.gradle || true
+          sed -n '1,180p' "$ROOT_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -291,10 +327,10 @@ workflows:
               "$WRAP" projects --warning-mode=all
               "$WRAP" :app:properties --warning-mode=all
               "$WRAP" cdvPrintProps --warning-mode=all || true
-              "$WRAP" :app:bundleRelease --stacktrace --info --debug --warning-mode=all --no-daemon
+              "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
               echo "▶ Dump de build.gradle (app) para diagnóstico"
-              sed -n '1,220p' platforms/android/app/build.gradle || true
+              sed -n '1,240p' platforms/android/app/build.gradle || true
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
             fi
