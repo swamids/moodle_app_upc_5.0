@@ -42,7 +42,7 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x
+          # Plataforma con soporte AGP 8.x (no forzamos AGP exacto para evitar choques)
           ionic cordova platform add android@13
 
           # Asegurar árbol completo (genera wrapper, gradle props, etc.)
@@ -51,7 +51,8 @@ workflows:
           echo "▶ Árbol platforms/android:"
           find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
-          # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
+          # ---- Ajustes 16KB: Gradle/NDK/SDK ----
+          # 1) Actualiza el Gradle wrapper a 8.4 (estable con AGP 8.x)
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
@@ -60,18 +61,8 @@ workflows:
             echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
           fi
 
-          # Forzar AGP 8.3.2 en el build.gradle raíz
-          if [ -f platforms/android/build.gradle ]; then
-            sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' platforms/android/build.gradle
-            # Actualiza Kotlin si está definido
-            if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
-              sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
-            fi
-          else
-            echo "⚠ No se encontró platforms/android/build.gradle (aún)."
-          fi
-
-          # Propiedades para NDK, compileSdk y memoria Gradle
+          # 2) No forzamos AGP con sed: dejamos la plantilla de cordova-android 13 decidir la mejor versión compatible.
+          # 3) Fijamos NDK y compileSdk en gradle.properties
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
@@ -91,7 +82,7 @@ workflows:
         script: |
           set -e
           set +e
-          ionic cordova build android --debug -- --packageType=apk --stacktrace --info
+          ionic cordova build android --debug -- --packageType=apk --stacktrace --info --warning-mode all
           EXIT=$?
           if [ $EXIT -ne 0 ]; then
             echo "⚠ cordova build falló, intento Gradle directo (detectando wrapper)…"
@@ -104,7 +95,9 @@ workflows:
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
               "$WRAP" --version
-              "$WRAP" :app:assembleDebug --stacktrace --info --no-daemon
+              "$WRAP" :app:properties --warning-mode all
+              "$WRAP" projects --warning-mode all
+              "$WRAP" :app:assembleDebug --stacktrace --info --warning-mode all --no-daemon
               EXIT=$?
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
@@ -162,7 +155,7 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x
+          # Plataforma con soporte AGP 8.x (no forzar AGP exacto)
           ionic cordova platform add android@13
 
           # Asegurar árbol completo (genera wrapper, gradle props, etc.)
@@ -171,7 +164,7 @@ workflows:
           echo "▶ Árbol platforms/android:"
           find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
-          # ---- Ajustes 16KB: AGP/Gradle/NDK/SDK ----
+          # ---- Ajustes 16KB: Gradle/NDK/SDK ----
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
@@ -180,15 +173,7 @@ workflows:
             echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
           fi
 
-          if [ -f platforms/android/build.gradle ]; then
-            sed -i -E 's/com\.android\.tools\.build:gradle:[^"]+/com.android.tools.build:gradle:8.3.2/' platforms/android/build.gradle
-            if grep -q "ext.kotlin_version" platforms/android/build.gradle; then
-              sed -i -E "s/ext\.kotlin_version\s*=\s*'[^']+'/ext.kotlin_version = '1.9.24'/" platforms/android/build.gradle
-            fi
-          else
-            echo "⚠ No se encontró platforms/android/build.gradle (aún)."
-          fi
-
+          # No tocamos la línea de com.android.tools.build:gradle para evitar choques con la plantilla.
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
@@ -289,7 +274,7 @@ workflows:
         script: |
           set -e
           set +e
-          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle --stacktrace --info
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle --stacktrace --info --warning-mode all
           EXIT=$?
           if [ $EXIT -ne 0 ]; then
             echo "⚠ cordova build falló, intento Gradle directo (detectando wrapper)…"
@@ -302,7 +287,9 @@ workflows:
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
               "$WRAP" --version
-              "$WRAP" :app:bundleRelease --stacktrace --info --no-daemon
+              "$WRAP" :app:properties --warning-mode all
+              "$WRAP" cdvPrintProps --warning-mode all || true
+              "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode all --no-daemon
               EXIT=$?
               echo "▶ Dump de build.gradle (app) para diagnóstico"
               sed -n '1,200p' platforms/android/app/build.gradle || true
