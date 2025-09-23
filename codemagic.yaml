@@ -18,11 +18,11 @@ workflows:
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      # >>>>>> BLOQUE NUEVO (1/2): Idioma por defecto y lenguajes permitidos
+      # Idioma por defecto y lenguajes permitidos
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
-          # Ajusta "languages" según prefieras: ["es"] (solo español) o ["es","en"] (bilingüe)
+          # Ajusta "languages" a ["es"] (solo español) o ["es","en"] (bilingüe)
           cat > moodle.config.json <<'JSON'
           {
             "app_id": "com.upc.moodleapp",
@@ -34,33 +34,33 @@ workflows:
           JSON
           echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
 
-      # >>>>>> BLOQUE NUEVO (2/2): Descargar/actualizar paquetes de idioma
-      - name: Descargar/actualizar paquetes de idioma (ES)
+      # Descargar/actualizar paquetes de idioma (robusto para /bin/sh)
+      - name: Descargar/actualizar paquetes de idioma (ES) — FIX
         script: |
           set -e
-          if npm run | grep -q "lang:update-langpacks"; then
-            echo "▶ Ejecutando npm run lang:update-langpacks"
-            npm run lang:update-langpacks
-          elif [ -x scripts/update_langpacks.sh ]; then
-            echo "▶ Ejecutando scripts/update_langpacks.sh"
-            bash scripts/update_langpacks.sh
-          else
-            echo "⚠️ No existe npm run lang:update-langpacks ni scripts/update_langpacks.sh"
-            echo "   Creando es.json mínimo para evitar fallos de build…"
-            mkdir -p src/assets/lang
-            cat > src/assets/lang/es.json <<'JSON'
-            {
-              "app.title": "Moodle UPC",
-              "app.ok": "Aceptar",
-              "app.cancel": "Cancelar",
-              "app.back": "Atrás"
-            }
-            JSON
+          mkdir -p src/assets/lang
+          HAVE_SCRIPT=false
+          if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
+            echo "▶ Ejecutando: npm run lang:update-langpacks"
+            npm run lang:update-langpacks && HAVE_SCRIPT=true
           fi
-
-          # Sanity check: asegurar que es.json exista
+          if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
+            echo "▶ Ejecutando: scripts/update_langpacks.sh"
+            bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
+          fi
           if [ ! -f src/assets/lang/es.json ]; then
-            echo "❌ Falta src/assets/lang/es.json. Aborta."
+            echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
+            cat > src/assets/lang/es.json <<'EOF'
+{
+  "app.title": "Moodle UPC",
+  "app.ok": "Aceptar",
+  "app.cancel": "Cancelar",
+  "app.back": "Atrás"
+}
+EOF
+          fi
+          if [ ! -s src/assets/lang/es.json ]; then
+            echo "❌ src/assets/lang/es.json no existe o está vacío."
             exit 1
           fi
           echo "✅ Idioma ES disponible en src/assets/lang/es.json"
@@ -101,6 +101,12 @@ workflows:
 
   # -----------------------------------------------------------------
   # RELEASE: Firma con keystore y genera AAB para publicar en Play
+  # Requiere en el grupo 'keystore_group':
+  #  - CM_KEYSTORE (base64 del .keystore/.jks)
+  #  - CM_KEYSTORE_PASSWORD
+  #  - CM_KEY_ALIAS
+  #  - CM_KEY_PASSWORD
+  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
   # -----------------------------------------------------------------
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
@@ -121,11 +127,11 @@ workflows:
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      # >>>>>> BLOQUE NUEVO (1/2): Idioma por defecto y lenguajes permitidos
+      # Idioma por defecto y lenguajes permitidos
       - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
-          # Ajusta "languages" según prefieras: ["es"] (solo español) o ["es","en"] (bilingüe)
+          # Ajusta "languages" a ["es"] (solo español) o ["es","en"] (bilingüe)
           cat > moodle.config.json <<'JSON'
           {
             "app_id": "com.upc.moodleapp",
@@ -137,33 +143,33 @@ workflows:
           JSON
           echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
 
-      # >>>>>> BLOQUE NUEVO (2/2): Descargar/actualizar paquetes de idioma
-      - name: Descargar/actualizar paquetes de idioma (ES)
+      # Descargar/actualizar paquetes de idioma (robusto para /bin/sh)
+      - name: Descargar/actualizar paquetes de idioma (ES) — FIX
         script: |
           set -e
-          if npm run | grep -q "lang:update-langpacks"; then
-            echo "▶ Ejecutando npm run lang:update-langpacks"
-            npm run lang:update-langpacks
-          elif [ -x scripts/update_langpacks.sh ]; then
-            echo "▶ Ejecutando scripts/update_langpacks.sh"
-            bash scripts/update_langpacks.sh
-          else
-            echo "⚠️ No existe npm run lang:update-langpacks ni scripts/update_langpacks.sh"
-            echo "   Creando es.json mínimo para evitar fallos de build…"
-            mkdir -p src/assets/lang
-            cat > src/assets/lang/es.json <<'JSON'
-            {
-              "app.title": "Moodle UPC",
-              "app.ok": "Aceptar",
-              "app.cancel": "Cancelar",
-              "app.back": "Atrás"
-            }
-            JSON
+          mkdir -p src/assets/lang
+          HAVE_SCRIPT=false
+          if npm run 2>/dev/null | grep -q "lang:update-langpacks"; then
+            echo "▶ Ejecutando: npm run lang:update-langpacks"
+            npm run lang:update-langpacks && HAVE_SCRIPT=true
           fi
-
-          # Sanity check: asegurar que es.json exista
+          if [ "$HAVE_SCRIPT" != "true" ] && [ -x scripts/update_langpacks.sh ]; then
+            echo "▶ Ejecutando: scripts/update_langpacks.sh"
+            bash scripts/update_langpacks.sh && HAVE_SCRIPT=true
+          fi
           if [ ! -f src/assets/lang/es.json ]; then
-            echo "❌ Falta src/assets/lang/es.json. Aborta."
+            echo "⚠️ No se obtuvo es.json automáticamente; creando base mínima…"
+            cat > src/assets/lang/es.json <<'EOF'
+{
+  "app.title": "Moodle UPC",
+  "app.ok": "Aceptar",
+  "app.cancel": "Cancelar",
+  "app.back": "Atrás"
+}
+EOF
+          fi
+          if [ ! -s src/assets/lang/es.json ]; then
+            echo "❌ src/assets/lang/es.json no existe o está vacío."
             exit 1
           fi
           echo "✅ Idioma ES disponible en src/assets/lang/es.json"
@@ -199,6 +205,7 @@ workflows:
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
 
+          # Copiar a rutas esperadas por gradle/plugins
           mkdir -p platforms/android/app src
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           mkdir -p platforms/android/app/src/release
