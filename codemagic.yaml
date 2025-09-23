@@ -1,246 +1,283 @@
 workflows:
-  # ===== ANDROID =====
+  # ------------------------------------------------------------
+  # DEBUG: APK sin firma (rápido para validar branding y estilos)
+  # ------------------------------------------------------------
   build-android-debug:
-    name: Android Debug (branding rápido)
+    name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
     environment:
-      groups:
-        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+      node: 20.18.0
+      java: 17
       vars:
-        ANDROID_PACKAGE: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
     scripts:
-      - name: Install Node deps
-        script: |
-          npm ci
-      - name: Descargar idioma ES (Moodle App)
+      - name: Instalar dependencias
         script: |
           set -e
-          mkdir -p src/assets/lang
-          if curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/v5.0.0/src/assets/lang/es.json" -o src/assets/lang/es.json; then
-            echo "Descargado es.json desde v5.0.0"
-          else
-            echo "No se encontró en v5.0.0, probando main…"
-            curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/main/src/assets/lang/es.json" -o src/assets/lang/es.json
-            echo "Descargado es.json desde main"
-          fi
-          test -s src/assets/lang/es.json || { echo "Falta src/assets/lang/es.json"; exit 1; }
-      - name: Build web
-        script: |
-          npm run build
-      - name: Capacitor sync
-        script: |
-          npx cap sync android
-      - name: Build Android Debug APK
-        script: |
-          cd android
-          ./gradlew assembleDebug
-    artifacts:
-      - android/app/build/outputs/**/*.apk
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
 
+      # >>>>>> BLOQUE NUEVO (1/2): Idioma por defecto y lenguajes permitidos
+      - name: Configurar idioma por defecto (moodle.config.json)
+        script: |
+          set -e
+          # Ajusta "languages" según prefieras: ["es"] (solo español) o ["es","en"] (bilingüe)
+          cat > moodle.config.json <<'JSON'
+          {
+            "app_id": "com.upc.moodleapp",
+            "appname": "Moodle UPC",
+            "versioncode": 10000,
+            "versionname": "1.0.0",
+            "languages": ["es","en"]
+          }
+          JSON
+          echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
+
+      # >>>>>> BLOQUE NUEVO (2/2): Descargar/actualizar paquetes de idioma
+      - name: Descargar/actualizar paquetes de idioma (ES)
+        script: |
+          set -e
+          if npm run | grep -q "lang:update-langpacks"; then
+            echo "▶ Ejecutando npm run lang:update-langpacks"
+            npm run lang:update-langpacks
+          elif [ -x scripts/update_langpacks.sh ]; then
+            echo "▶ Ejecutando scripts/update_langpacks.sh"
+            bash scripts/update_langpacks.sh
+          else
+            echo "⚠️ No existe npm run lang:update-langpacks ni scripts/update_langpacks.sh"
+            echo "   Creando es.json mínimo para evitar fallos de build…"
+            mkdir -p src/assets/lang
+            cat > src/assets/lang/es.json <<'JSON'
+            {
+              "app.title": "Moodle UPC",
+              "app.ok": "Aceptar",
+              "app.cancel": "Cancelar",
+              "app.back": "Atrás"
+            }
+            JSON
+          fi
+
+          # Sanity check: asegurar que es.json exista
+          if [ ! -f src/assets/lang/es.json ]; then
+            echo "❌ Falta src/assets/lang/es.json. Aborta."
+            exit 1
+          fi
+          echo "✅ Idioma ES disponible en src/assets/lang/es.json"
+
+      - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
+        script: |
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
+
+      - name: Compilar web (Ionic) con estilos actualizados
+        script: |
+          set -e
+          ionic build
+
+      - name: Preparar recursos (icon/adaptive) y plataforma
+        script: |
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
+
+          ionic cordova platform add android
+          ionic cordova clean android || true
+
+      - name: Compilar APK (DEBUG)
+        script: |
+          set -e
+          ionic cordova build android --debug -- --packageType=apk
+
+    artifacts:
+      - platforms/android/app/build/outputs/apk/debug/*.apk
+
+
+  # -----------------------------------------------------------------
+  # RELEASE: Firma con keystore y genera AAB para publicar en Play
+  # -----------------------------------------------------------------
   build-android-release:
-    name: Android Release (AAB firmado)
-    max_build_duration: 90
+    name: Moodle App Build for Android (RELEASE AAB firmado para Play)
+    max_build_duration: 60
     environment:
+      node: 20.18.0
+      java: 17
       groups:
-        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+        - keystore_group
       vars:
-        ANDROID_PACKAGE: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
-    scripts:
-      - name: Install Node deps
-        script: |
-          npm ci
-      - name: Descargar idioma ES (Moodle App)
-        script: |
-          set -e
-          mkdir -p src/assets/lang
-          if curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/v5.0.0/src/assets/lang/es.json" -o src/assets/lang/es.json; then
-            echo "Descargado es.json desde v5.0.0"
-          else
-            echo "No se encontró en v5.0.0, probando main…"
-            curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/main/src/assets/lang/es.json" -o src/assets/lang/es.json
-            echo "Descargado es.json desde main"
-          fi
-          test -s src/assets/lang/es.json || { echo "Falta src/assets/lang/es.json"; exit 1; }
-      - name: Build web
-        script: |
-          npm run build
-      - name: Capacitor sync
-        script: |
-          npx cap sync android
-      - name: Decode google-services.json (si aplica)
-        script: |
-          if [[ -n "$GOOGLE_SERVICES_JSON_B64" ]]; then
-            echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
-          fi
-      - name: Build Android App Bundle
-        script: |
-          cd android
-          ./gradlew bundleRelease
-    artifacts:
-      - android/app/build/outputs/**/*.aab
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
 
-  # ===== iOS =====
-  build-ios-dev:
-    name: iOS Dev (TestFlight interno)
-    max_build_duration: 90
-    environment:
-      xcode: latest
-      cocoapods: default
-      groups:
-        - apple_api_key_group   # si tienes integración en UI, este grupo puede omitirse
-      vars:
-        IOS_BUNDLE_ID: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
     scripts:
-      - name: Install Node deps
-        script: |
-          npm ci
-      - name: Descargar idioma ES (Moodle App)
+      - name: Instalar dependencias
         script: |
           set -e
-          mkdir -p src/assets/lang
-          if curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/v5.0.0/src/assets/lang/es.json" -o src/assets/lang/es.json; then
-            echo "Descargado es.json desde v5.0.0"
-          else
-            echo "No se encontró en v5.0.0, probando main…"
-            curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/main/src/assets/lang/es.json" -o src/assets/lang/es.json
-            echo "Descargado es.json desde main"
-          fi
-          test -s src/assets/lang/es.json || { echo "Falta src/assets/lang/es.json"; exit 1; }
-      - name: Build web
-        script: |
-          npm run build
-      - name: Capacitor sync
-        script: |
-          npx cap sync ios
-      - name: Place GoogleService-Info.plist (si aplica)
-        script: |
-          if [[ -n "$GOOGLE_SERVICE_INFO_PLIST_B64" ]]; then
-            mkdir -p ios/App/App
-            echo "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > ios/App/App/GoogleService-Info.plist
-          fi
-      - name: CocoaPods install
-        script: |
-          cd ios/App
-          pod install
-      - name: Automatic code signing
-        script: |
-          app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain initialize
-          app-store-connect keychain add-certificates
-      - name: Xcode build (archive)
-        script: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
-      - name: Export IPA
-        script: |
-          cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>compileBitcode</key><true/>
-            <key>signingStyle</key><string>automatic</string>
-            <key>destination</key><string>export</string>
-            <key>manageAppVersionAndBuildNumber</key><true/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath $CM_BUILD_DIR/App.xcarchive \
-            -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
-            -exportPath $CM_BUILD_DIR/ipa
-    artifacts:
-      - ipa/*.ipa
-      - App.xcarchive
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
 
-  build-ios-release:
-    name: iOS Release (App Store / TestFlight)
-    max_build_duration: 120
-    environment:
-      xcode: latest
-      cocoapods: default
-      groups:
-        - apple_api_key_group   # si usas integración en UI, puedes omitir este grupo
-      vars:
-        IOS_BUNDLE_ID: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
-    scripts:
-      - name: Install Node deps
-        script: |
-          npm ci
-      - name: Descargar idioma ES (Moodle App)
+      # >>>>>> BLOQUE NUEVO (1/2): Idioma por defecto y lenguajes permitidos
+      - name: Configurar idioma por defecto (moodle.config.json)
         script: |
           set -e
-          mkdir -p src/assets/lang
-          if curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/v5.0.0/src/assets/lang/es.json" -o src/assets/lang/es.json; then
-            echo "Descargado es.json desde v5.0.0"
+          # Ajusta "languages" según prefieras: ["es"] (solo español) o ["es","en"] (bilingüe)
+          cat > moodle.config.json <<'JSON'
+          {
+            "app_id": "com.upc.moodleapp",
+            "appname": "Moodle UPC",
+            "versioncode": 10000,
+            "versionname": "1.0.0",
+            "languages": ["es","en"]
+          }
+          JSON
+          echo "✅ moodle.config.json escrito con languages = [\"es\",\"en\"]"
+
+      # >>>>>> BLOQUE NUEVO (2/2): Descargar/actualizar paquetes de idioma
+      - name: Descargar/actualizar paquetes de idioma (ES)
+        script: |
+          set -e
+          if npm run | grep -q "lang:update-langpacks"; then
+            echo "▶ Ejecutando npm run lang:update-langpacks"
+            npm run lang:update-langpacks
+          elif [ -x scripts/update_langpacks.sh ]; then
+            echo "▶ Ejecutando scripts/update_langpacks.sh"
+            bash scripts/update_langpacks.sh
           else
-            echo "No se encontró en v5.0.0, probando main…"
-            curl -fsL "https://raw.githubusercontent.com/moodlehq/moodleapp/main/src/assets/lang/es.json" -o src/assets/lang/es.json
-            echo "Descargado es.json desde main"
+            echo "⚠️ No existe npm run lang:update-langpacks ni scripts/update_langpacks.sh"
+            echo "   Creando es.json mínimo para evitar fallos de build…"
+            mkdir -p src/assets/lang
+            cat > src/assets/lang/es.json <<'JSON'
+            {
+              "app.title": "Moodle UPC",
+              "app.ok": "Aceptar",
+              "app.cancel": "Cancelar",
+              "app.back": "Atrás"
+            }
+            JSON
           fi
-          test -s src/assets/lang/es.json || { echo "Falta src/assets/lang/es.json"; exit 1; }
-      - name: Build web (prod)
-        script: |
-          npm run build
-      - name: Capacitor sync
-        script: |
-          npx cap sync ios
-      - name: Place GoogleService-Info.plist (si aplica)
-        script: |
-          if [[ -n "$GOOGLE_SERVICE_INFO_PLIST_B64" ]]; then
-            mkdir -p ios/App/App
-            echo "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > ios/App/App/GoogleService-Info.plist
+
+          # Sanity check: asegurar que es.json exista
+          if [ ! -f src/assets/lang/es.json ]; then
+            echo "❌ Falta src/assets/lang/es.json. Aborta."
+            exit 1
           fi
-      - name: CocoaPods install
+          echo "✅ Idioma ES disponible en src/assets/lang/es.json"
+
+      - name: Limpiar y compilar web (Ionic)
         script: |
-          cd ios/App
-          pod install
-      - name: Automatic code signing (App Store)
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          ionic build
+
+      - name: Recursos (icon/adaptive) y plataforma
         script: |
-          app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain initialize
-          app-store-connect keychain add-certificates
-      - name: Xcode build (archive)
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
+
+          ionic cordova platform add android
+          ionic cordova clean android || true
+
+      - name: Restaurar google-services.json (Firebase)
         script: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
-      - name: Export IPA (App Store)
+          set -e
+          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
+          fi
+
+          echo "▶ Restaurando google-services.json…"
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
+
+          mkdir -p platforms/android/app src
+          cp -f /tmp/google-services.json platforms/android/app/google-services.json
+          mkdir -p platforms/android/app/src/release
+          cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
+
+          echo "▶ Validando package_name esperado ($PACKAGE_NAME)…"
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
+            echo "✅ google-services.json contiene $PACKAGE_NAME"
+          else
+            echo "❌ El google-services.json no corresponde a $PACKAGE_NAME"
+            echo "   Paquetes encontrados:"
+            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
+            exit 1
+          fi
+
+      - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
-          cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>compileBitcode</key><true/>
-            <key>signingStyle</key><string>automatic</string>
-            <key>destination</key><string>export</string>
-            <key>manageAppVersionAndBuildNumber</key><true/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath $CM_BUILD_DIR/App.xcarchive \
-            -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
-            -exportPath $CM_BUILD_DIR/ipa
+          set -e
+          for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
+          done
+
+          echo "▶ Restaurando /tmp/release.keystore…"
+          ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
+
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "❌ Keystore vacío o corrupto"; exit 1
+          fi
+
+          echo "▶ Validando STOREPASS…"
+          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
+            echo "❌ Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
+          fi
+
+          echo "▶ Detectando tipo de keystore…"
+          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
+          [ -z "$TYPE" ] && TYPE="jks"
+          echo "✅ Keystore type: $TYPE"
+
+          echo "▶ Validando ALIAS y KEYPASS…"
+          if ! keytool -list -v \
+            -keystore /tmp/release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -alias "$CM_KEY_ALIAS" \
+            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "❌ Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
+          fi
+          echo "✅ Alias y key password válidos."
+
+          echo "▶ Creando /tmp/build.json…"
+          cat >/tmp/build.json <<EOF
+          {
+            "android": {
+              "release": {
+                "keystore": "/tmp/release.keystore",
+                "storePassword": "$CM_KEYSTORE_PASSWORD",
+                "alias": "$CM_KEY_ALIAS",
+                "password": "$CM_KEY_PASSWORD",
+                "keystoreType": "$TYPE",
+                "packageType": "bundle"
+              }
+            }
+          }
+          EOF
+          echo "Contenido (oculto passwords):"
+          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
+
+      - name: Build RELEASE AAB firmado
+        script: |
+          set -e
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
+
+          echo "▶ Artefactos generados:"
+          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
+
+          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
+
     artifacts:
-      - ipa/*.ipa
-      - App.xcarchive
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
-        # submit_to_app_store: true
+      - platforms/android/app/build/outputs/bundle/release/*.aab
+      - platforms/android/app/build/outputs/**/*.apk
