@@ -42,7 +42,7 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x (de cordova-android@13)
+          # Plataforma con soporte AGP 8.x (Cordova Android 13)
           ionic cordova platform add android@13
 
           # Asegurar árbol completo (wrapper, gradle props, etc.)
@@ -51,13 +51,13 @@ workflows:
           echo "▶ Árbol platforms/android:"
           find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
-          # ---- Ajustes 16KB: Gradle/NDK/SDK + target/min ----
+          # ---- Ajustes 16KB: Gradle/NDK/SDK + target/min + desactivar multi-APK ----
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
             sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
           else
-            echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
+            echo "⚠ No se encontró gradle-wrapper.properties aún."
           fi
 
           {
@@ -67,31 +67,35 @@ workflows:
             echo "cdvCompileSdkVersion=35"
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
+            echo "cdvBuildMultipleApks=false"     # 🚫 NO multi-APK con AAB
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # ---- PARCHE AGP8: build.gradle (app) ----
+          # ---- PARCHE AGP8: build.gradle (app & root) ----
           APP_GRADLE="platforms/android/app/build.gradle"
-          if [ -f "$APP_GRADLE" ]; then
-            echo "▶ Parcheando $APP_GRADLE para AGP8…"
-            # 1) lintOptions -> lint { abortOnError false }
-            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE"
-            # 2) Eliminar buildToolsVersion …
-            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$APP_GRADLE"
-          fi
-
-          # ---- PARCHE AGP8: build.gradle (root) si existiera lo mismo ----
           ROOT_GRADLE="platforms/android/build.gradle"
-          if [ -f "$ROOT_GRADLE" ]; then
-            echo "▶ Revisando $ROOT_GRADLE…"
-            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$ROOT_GRADLE" || true
-            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$ROOT_GRADLE" || true
-          fi
+
+          fix_gradle() {
+            local FILE="$1"
+            [ -f "$FILE" ] || return 0
+            echo "▶ Parcheando $FILE para AGP8…"
+            # 1) lintOptions -> lint {}
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$FILE" || true
+            # 2) Eliminar cualquier buildToolsVersion …
+            sed -i -E '/buildToolsVersion/d' "$FILE" || true
+            # 3) (Opcional) Inyectar ndk { abiFilters } en defaultConfig si no hay flavors
+            #    Insertamos tras la línea de compileSdkVersion/min/target si existe defaultConfig { ... }
+            if grep -q 'defaultConfig\s*{' "$FILE"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
+            fi
+          }
+          fix_gradle "$APP_GRADLE"
+          fix_gradle "$ROOT_GRADLE"
 
           echo "---- build.gradle (app) preview ----"
-          sed -n '1,200p' "$APP_GRADLE" || true
+          sed -n '1,260p' "$APP_GRADLE" || true
           echo "---- build.gradle (root) preview ----"
-          sed -n '1,160p' "$ROOT_GRADLE" || true
+          sed -n '1,220p' "$ROOT_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -131,12 +135,6 @@ workflows:
 
   # -----------------------------------------------------------------
   # RELEASE: Firma con keystore y genera AAB para publicar en Play
-  # Requiere en el grupo 'keystore_group':
-  #  - CM_KEYSTORE (base64 del .keystore/.jks)
-  #  - CM_KEYSTORE_PASSWORD
-  #  - CM_KEY_ALIAS
-  #  - CM_KEY_PASSWORD
-  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
   # -----------------------------------------------------------------
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
@@ -175,22 +173,19 @@ workflows:
           cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x (de cordova-android@13)
+          # Plataforma con soporte AGP 8.x
           ionic cordova platform add android@13
-
-          # Asegurar árbol completo (wrapper, gradle props, etc.)
           ionic cordova prepare android
 
           echo "▶ Árbol platforms/android:"
           find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
 
-          # ---- Ajustes 16KB: Gradle/NDK/SDK + target/min ----
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             echo "▶ Editando Gradle Wrapper en: $WRAPPER_FILE"
             sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
           else
-            echo "⚠ No se encontró gradle-wrapper.properties aún. Continuo (Gradle puede resolverse por defecto)."
+            echo "⚠ No se encontró gradle-wrapper.properties aún."
           fi
 
           {
@@ -200,27 +195,32 @@ workflows:
             echo "cdvCompileSdkVersion=35"
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
+            echo "cdvBuildMultipleApks=false"     # 🚫 NO multi-APK con AAB
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # ---- PARCHE AGP8: build.gradle (app & root) ----
+          # Parche AGP8 (app & root)
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
           if [ -f "$APP_GRADLE" ]; then
             echo "▶ Parcheando $APP_GRADLE para AGP8…"
-            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE"
-            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$APP_GRADLE"
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE" || true
+            sed -i -E '/buildToolsVersion/d' "$APP_GRADLE" || true
+            # Inyectar ndk abiFilters (sin flavors)
+            if grep -q 'defaultConfig\s*{' "$APP_GRADLE"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$APP_GRADLE" || true
+            fi
           fi
           if [ -f "$ROOT_GRADLE" ]; then
-            echo "▶ Parcheando $ROOT_GRADLE (si aplica)…"
+            echo "▶ Parcheando $ROOT_GRADLE…"
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$ROOT_GRADLE" || true
-            sed -i -E '/^\s*buildToolsVersion\s+cordovaConfig\.BUILD_TOOLS_VERSION\s*$/d' "$ROOT_GRADLE" || true
+            sed -i -E '/buildToolsVersion/d' "$ROOT_GRADLE" || true
           fi
 
           echo "---- build.gradle (app) preview ----"
-          sed -n '1,220p' "$APP_GRADLE" || true
+          sed -n '1,260p' "$APP_GRADLE" || true
           echo "---- build.gradle (root) preview ----"
-          sed -n '1,180p' "$ROOT_GRADLE" || true
+          sed -n '1,220p' "$ROOT_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -232,64 +232,36 @@ workflows:
           if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
             echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
           fi
-
           echo "▶ Restaurando google-services.json…"
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
-
           mkdir -p platforms/android/app src
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           mkdir -p platforms/android/app/src/release
           cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
-
           echo "▶ Validando package_name esperado ($PACKAGE_NAME)…"
           if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
             echo "✅ google-services.json contiene $PACKAGE_NAME"
           else
             echo "❌ El google-services.json no corresponde a $PACKAGE_NAME"
-            echo "   Paquetes encontrados:"
             grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
             exit 1
           fi
 
-      - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
+      - name: Sanity check del keystore (firma)
         script: |
           set -e
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
             [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
           done
-
           echo "▶ Restaurando /tmp/release.keystore…"
           ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
-
-          if [ ! -s /tmp/release.keystore ]; then
-            echo "❌ Keystore vacío o corrupto"; exit 1
-          fi
-
-          echo "▶ Validando STOREPASS…"
-          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
-            echo "❌ Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
-          fi
-
-          echo "▶ Detectando tipo de keystore…"
-          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
-          [ -z "$TYPE" ] && TYPE="jks"
-          echo "✅ Keystore type: $TYPE"
-
-          echo "▶ Validando ALIAS y KEYPASS…"
-          if ! keytool -list -v \
-            -keystore /tmp/release.keystore \
-            -storepass "$CM_KEYSTORE_PASSWORD" \
-            -alias "$CM_KEY_ALIAS" \
-            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
-            echo "❌ Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
-          fi
-          echo "✅ Alias y key password válidos."
-
-          echo "▶ Creando /tmp/build.json…"
+          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null || { echo "❌ STOREPASS incorrecto"; exit 1; }
+          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]'); [ -z "$TYPE" ] && TYPE="jks"
+          keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1 || { echo "❌ Alias/KEYPASS incorrectos"; exit 1; }
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -304,7 +276,6 @@ workflows:
             }
           }
           EOF
-          echo "Contenido (oculto passwords):"
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
       - name: Build RELEASE AAB firmado (compatibilidad 16KB) con fallback y stacktrace
@@ -330,7 +301,7 @@ workflows:
               "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
               echo "▶ Dump de build.gradle (app) para diagnóstico"
-              sed -n '1,240p' platforms/android/app/build.gradle || true
+              sed -n '1,260p' platforms/android/app/build.gradle || true
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
             fi
