@@ -66,7 +66,7 @@ workflows:
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # ---- Parches AGP8, anti multi-APK y limpieza de deps ----
+          # ---- Parches AGP8 y anti multi-APK + limpieza deps ----
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
 
@@ -93,28 +93,14 @@ workflows:
             sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d' "$FILE" || true
             sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$FILE" || true
 
-            # 5) inyectar BoM de Firebase y messaging sin versión (si no existe ya)
+            # 5) inyectar BoM Firebase + messaging sin versión (si no existe)
             if ! grep -q 'platform("com.google.firebase:firebase-bom' "$FILE"; then
               perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$FILE" || true
             fi
 
-            # 6) asegurar abiFilters (AAB sin flavors)
+            # 6) ABI filters (AAB sin flavors)
             if grep -q 'defaultConfig\s*{' "$FILE"; then
               perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
-            fi
-
-            # 7) forzar versiones modernas de AndroidX si algún plugin arrastra viejas
-            if ! grep -q "resolutionStrategy" "$FILE"; then
-              cat >> "$FILE" <<'RSBLOCK'
-
-configurations.all {
-  resolutionStrategy {
-    force 'androidx.appcompat:appcompat:1.7.0'
-    force 'androidx.core:core:1.13.1'
-    force 'androidx.webkit:webkit:1.11.0'
-  }
-}
-RSBLOCK
             fi
           }
 
@@ -219,7 +205,7 @@ RSBLOCK
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # Parches AGP8 + deps modernas
+          # Parches AGP8 + deps modernas (sin resolutionStrategy para evitar YAML issues)
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
           patch_gradle_common() {
@@ -245,19 +231,6 @@ RSBLOCK
 
             if grep -q 'defaultConfig\s*{' "$FILE"; then
               perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
-            fi
-
-            if ! grep -q "resolutionStrategy" "$FILE"; then
-              cat >> "$FILE" <<'RSBLOCK'
-
-configurations.all {
-  resolutionStrategy {
-    force 'androidx.appcompat:appcompat:1.7.0'
-    force 'androidx.core:core:1.13.1'
-    force 'androidx.webkit:webkit:1.11.0'
-  }
-}
-RSBLOCK
             fi
           }
           patch_gradle_common "$ROOT_GRADLE"
