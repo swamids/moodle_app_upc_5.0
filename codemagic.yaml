@@ -1,7 +1,4 @@
 workflows:
-  # ============================
-  # DEBUG
-  # ============================
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
@@ -59,11 +56,9 @@ workflows:
           ROOT_GRADLE="platforms/android/build.gradle"
           APP_GRADLE="platforms/android/app/build.gradle"
 
-          # --- Parches mínimos AGP8 (sólo si existen) ---
+          # Parches mínimos AGP8 (seguros)
           if [ -f "$APP_GRADLE" ]; then
-            # lintOptions -> lint { abortOnError false }
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE" || true
-            # eliminar buildToolsVersion si apareciera
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$APP_GRADLE" || true
           fi
           if [ -f "$ROOT_GRADLE" ]; then
@@ -71,7 +66,7 @@ workflows:
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$ROOT_GRADLE" || true
           fi
 
-          # --- Limpieza de dependencias viejas (sin añadir nada) ---
+          # Limpieza de deps viejas (sin añadir nada nuevo)
           if [ -f "$APP_GRADLE" ]; then
             cp "$APP_GRADLE" "$APP_GRADLE.bak"
 
@@ -82,20 +77,14 @@ workflows:
             sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d'     "$APP_GRADLE" || true
             sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$APP_GRADLE" || true
 
-            # --- Verificar que exista bloque dependencies del MÓDULO ---
-            HAS_IMPL=$(grep -c 'implementation\s*\(project\(path:\s*":CordovaLib"\)\)' "$APP_GRADLE" || true)
-            if [ "${HAS_IMPL:-0}" -eq 0 ]; then
-              echo "⚠ No se encontró 'implementation(project(path: \":CordovaLib\"))' en app/build.gradle; añadiendo bloque mínimo de dependencias…"
-              # Añadimos un bloque de dependencias MÍNIMO si no existe ninguno
-              if ! awk 'f{print} /dependencies[[:space:]]*\{/{f=1;exit}' "$APP_GRADLE" >/dev/null 2>&1; then
-                cat >> "$APP_GRADLE" <<'DEPSBLOCK'
+            # Si NO hay bloque dependencies de MÓDULO, añadir uno mínimo con printf (evita romper YAML)
+            if ! awk 'f{print; exit} /dependencies[[:space:]]*\{/{f=1}' "$APP_GRADLE" >/dev/null 2>&1; then
+              printf '\n\ndependencies {\n    implementation fileTree(dir: "libs", include: ["*.jar"])\n    implementation(project(path: ":CordovaLib"))\n}\n' >> "$APP_GRADLE"
+            fi
 
-dependencies {
-    implementation fileTree(dir: 'libs', include: '*.jar')
-    implementation(project(path: ":CordovaLib"))
-}
-DEPSBLOCK
-              fi
+            # ABI filters en defaultConfig (para AAB, sin flavors)
+            if grep -q 'defaultConfig[[:space:]]*{' "$APP_GRADLE" && ! grep -q 'abiFilters' "$APP_GRADLE"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$APP_GRADLE" || true
             fi
 
             # Validación de llaves
@@ -109,10 +98,7 @@ DEPSBLOCK
             fi
           fi
 
-          echo "---- PREV: cabecera de app/build.gradle ----"
-          sed -n '1,120p' "$APP_GRADLE" || true
           echo "---- PREV: dependencies (MÓDULO app) ----"
-          # imprime el primer bloque dependencies que NO esté bajo 'buildscript {'
           awk '
             /buildscript[[:space:]]*\{/ {bs=1}
             bs==1 && /\}/ {bs=0}
@@ -147,9 +133,6 @@ DEPSBLOCK
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
-  # ============================
-  # RELEASE (AAB firmado)
-  # ============================
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
     max_build_duration: 60
@@ -200,7 +183,6 @@ DEPSBLOCK
           ROOT_GRADLE="platforms/android/build.gradle"
           APP_GRADLE="platforms/android/app/build.gradle"
 
-          # Parches mínimos AGP8
           if [ -f "$APP_GRADLE" ]; then
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$APP_GRADLE" || true
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$APP_GRADLE" || true
@@ -210,7 +192,6 @@ DEPSBLOCK
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$ROOT_GRADLE" || true
           fi
 
-          # Limpieza de dependencias viejas (sin añadir nada)
           if [ -f "$APP_GRADLE" ]; then
             cp "$APP_GRADLE" "$APP_GRADLE.bak"
 
@@ -221,19 +202,12 @@ DEPSBLOCK
             sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d'     "$APP_GRADLE" || true
             sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$APP_GRADLE" || true
 
-            # Restaurar bloque de dependencias mínimo si falta el de módulo
-            HAS_IMPL=$(grep -c 'implementation\s*\(project\(path:\s*":CordovaLib"\)\)' "$APP_GRADLE" || true)
-            if [ "${HAS_IMPL:-0}" -eq 0 ]; then
-              echo "⚠ No se encontró bloque dependencies de módulo; añadiendo uno mínimo…"
-              if ! awk 'f{print} /dependencies[[:space:]]*\{/{f=1;exit}' "$APP_GRADLE" >/dev/null 2>&1; then
-                cat >> "$APP_GRADLE" <<'DEPSBLOCK'
+            if ! awk 'f{print; exit} /dependencies[[:space:]]*\{/{f=1}' "$APP_GRADLE" >/dev/null 2>&1; then
+              printf '\n\ndependencies {\n    implementation fileTree(dir: "libs", include: ["*.jar"])\n    implementation(project(path: ":CordovaLib"))\n}\n' >> "$APP_GRADLE"
+            fi
 
-dependencies {
-    implementation fileTree(dir: 'libs', include: '*.jar')
-    implementation(project(path: ":CordovaLib"))
-}
-DEPSBLOCK
-              fi
+            if grep -q 'defaultConfig[[:space:]]*{' "$APP_GRADLE" && ! grep -q 'abiFilters' "$APP_GRADLE"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$APP_GRADLE" || true
             fi
 
             OPEN=$(tr -cd '{' < "$APP_GRADLE" | wc -c | tr -d ' ')
