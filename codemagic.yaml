@@ -62,15 +62,15 @@ workflows:
             echo "cdvCompileSdkVersion=35"
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
-            echo "cdvBuildMultipleApks=false"   # 🚫 evitar flavors multi-APK
+            echo "cdvBuildMultipleApks=false"   # 🚫 evitar flavors multi-APK (AAB)
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # ---- Parches AGP 8 y anti multi-APK ----
+          # ---- Parches AGP8, anti multi-APK y limpieza de deps ----
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
 
-          patch_gradle() {
+          patch_gradle_common() {
             local FILE="$1"
             [ -f "$FILE" ] || return 0
             echo "▶ Parcheando $FILE…"
@@ -78,18 +78,52 @@ workflows:
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$FILE" || true
             # 2) eliminar buildToolsVersion
             sed -i -E '/buildToolsVersion/d' "$FILE" || true
-            # 3) eliminar bloque multi-APK y el else-if de versionCodeForceAbiDigit
+            # 3) eliminar bloque multi-APK y el else-if heredado
             perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$FILE" || true
-            # 4) asegurar abiFilters en defaultConfig (solo arm64/armv7)
+          }
+
+          patch_gradle_app() {
+            local FILE="$1"
+            [ -f "$FILE" ] || return 0
+            # 4) quitar dependencias obsoletas/duplicadas
+            sed -i -E '/"androidx\.appcompat:appcompat:1\.3\.1"/d' "$FILE" || true
+            sed -i -E '/"androidx\.core:core:1\.1\.0"/d' "$FILE" || true
+            sed -i -E '/"androidx\.core:core:1\.6\.\+"/d' "$FILE" || true
+            sed -i -E '/"androidx\.webkit:webkit:1\.4\.0"/d' "$FILE" || true
+            sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d' "$FILE" || true
+            sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$FILE" || true
+
+            # 5) inyectar BoM de Firebase y messaging sin versión (si no existe ya)
+            if ! grep -q 'platform("com.google.firebase:firebase-bom' "$FILE"; then
+              perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$FILE" || true
+            fi
+
+            # 6) asegurar abiFilters (AAB sin flavors)
             if grep -q 'defaultConfig\s*{' "$FILE"; then
               perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
             fi
+
+            # 7) forzar versiones modernas de AndroidX si algún plugin arrastra viejas
+            if ! grep -q "resolutionStrategy" "$FILE"; then
+              cat >> "$FILE" <<'RSBLOCK'
+
+configurations.all {
+  resolutionStrategy {
+    force 'androidx.appcompat:appcompat:1.7.0'
+    force 'androidx.core:core:1.13.1'
+    force 'androidx.webkit:webkit:1.11.0'
+  }
+}
+RSBLOCK
+            fi
           }
-          patch_gradle "$APP_GRADLE"
-          patch_gradle "$ROOT_GRADLE"
+
+          patch_gradle_common "$ROOT_GRADLE"
+          patch_gradle_common "$APP_GRADLE"
+          patch_gradle_app "$APP_GRADLE"
 
           echo "---- build.gradle (app) preview ----"
-          sed -n '1,280p' "$APP_GRADLE" || true
+          sed -n '1,340p' "$APP_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -181,29 +215,57 @@ workflows:
             echo "cdvCompileSdkVersion=35"
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
-            echo "cdvBuildMultipleApks=false"   # 🚫 evitar flavors multi-APK
+            echo "cdvBuildMultipleApks=false"
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # Parches AGP8 + anti multi-APK
+          # Parches AGP8 + deps modernas
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
-          patch_gradle() {
+          patch_gradle_common() {
             local FILE="$1"
             [ -f "$FILE" ] || return 0
-            echo "▶ Parcheando $FILE…"
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$FILE" || true
             sed -i -E '/buildToolsVersion/d' "$FILE" || true
             perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$FILE" || true
+          }
+          patch_gradle_app() {
+            local FILE="$1"
+            [ -f "$FILE" ] || return 0
+            sed -i -E '/"androidx\.appcompat:appcompat:1\.3\.1"/d' "$FILE" || true
+            sed -i -E '/"androidx\.core:core:1\.1\.0"/d' "$FILE" || true
+            sed -i -E '/"androidx\.core:core:1\.6\.\+"/d' "$FILE" || true
+            sed -i -E '/"androidx\.webkit:webkit:1\.4\.0"/d' "$FILE" || true
+            sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d' "$FILE" || true
+            sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$FILE" || true
+
+            if ! grep -q 'platform("com.google.firebase:firebase-bom' "$FILE"; then
+              perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$FILE" || true
+            fi
+
             if grep -q 'defaultConfig\s*{' "$FILE"; then
               perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
             fi
+
+            if ! grep -q "resolutionStrategy" "$FILE"; then
+              cat >> "$FILE" <<'RSBLOCK'
+
+configurations.all {
+  resolutionStrategy {
+    force 'androidx.appcompat:appcompat:1.7.0'
+    force 'androidx.core:core:1.13.1'
+    force 'androidx.webkit:webkit:1.11.0'
+  }
+}
+RSBLOCK
+            fi
           }
-          patch_gradle "$APP_GRADLE"
-          patch_gradle "$ROOT_GRADLE"
+          patch_gradle_common "$ROOT_GRADLE"
+          patch_gradle_common "$APP_GRADLE"
+          patch_gradle_app "$APP_GRADLE"
 
           echo "---- build.gradle (app) preview ----"
-          sed -n '1,300p' "$APP_GRADLE" || true
+          sed -n '1,360p' "$APP_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -272,7 +334,7 @@ workflows:
               "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
               echo "▶ Dump de build.gradle (app) para diagnóstico"
-              sed -n '1,320p' platforms/android/app/build.gradle || true
+              sed -n '1,360p' platforms/android/app/build.gradle || true
             else
               echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
             fi
