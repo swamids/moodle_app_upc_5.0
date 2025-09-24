@@ -1,7 +1,4 @@
 workflows:
-  # ------------------------------------------------------------
-  # DEBUG: APK sin firma (rápido para validar branding y estilos)
-  # ------------------------------------------------------------
   build-android-debug:
     name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
@@ -11,7 +8,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-        ANDROID_NDK_VERSION: "26.1.10909125"  # soporte 16KB
+        ANDROID_NDK_VERSION: "26.1.10909125"
     scripts:
       - name: Instalar dependencias
         script: |
@@ -19,42 +16,34 @@ workflows:
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
 
-      - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
+      - name: Limpiar cachés/artefactos
         script: |
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
 
-      - name: Compilar web (Ionic) con estilos actualizados
+      - name: Compilar web (Ionic)
         script: |
           set -e
           ionic build
 
-      - name: Preparar recursos (icon/adaptive) y plataforma + Ajustes 16KB
+      - name: Preparar plataforma + Ajustes AGP8/16KB + Limpieza deps viejas
         script: |
           set -e
-          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
-          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
-
-          mkdir -p resources/android
-          cp resources/icon.png resources/android/icon-foreground.png
-          cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
 
-          # Plataforma con soporte AGP 8.x (Cordova Android 13)
+          # Plataforma Cordova Android 13 (AGP 8.x compatible)
           ionic cordova platform add android@13
           ionic cordova prepare android
 
-          echo "▶ Árbol platforms/android:"
-          find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
-
-          # ---- Gradle 8.4 + NDK r26 + SDK 35 ----
+          echo "▶ Wrapper:"
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
             sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
           fi
 
+          # Gradle props: SDK 35 + NDK r26 + NO multi-APK
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
@@ -62,56 +51,49 @@ workflows:
             echo "cdvCompileSdkVersion=35"
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
-            echo "cdvBuildMultipleApks=false"   # 🚫 evitar flavors multi-APK (AAB)
+            echo "cdvBuildMultipleApks=false"
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # ---- Parches AGP8 y anti multi-APK + limpieza deps ----
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
 
-          patch_gradle_common() {
-            local FILE="$1"
-            [ -f "$FILE" ] || return 0
-            echo "▶ Parcheando $FILE…"
-            # 1) lintOptions -> lint
-            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$FILE" || true
-            # 2) eliminar buildToolsVersion
-            sed -i -E '/buildToolsVersion/d' "$FILE" || true
-            # 3) eliminar bloque multi-APK y el else-if heredado
-            perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$FILE" || true
+          patch_common() {
+            local F="$1"; [ -f "$F" ] || return 0
+            # lintOptions -> lint
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$F" || true
+            # quitar buildToolsVersion (AGP8)
+            sed -i -E '/buildToolsVersion/d' "$F" || true
+            # quitar multi-APK heredado y else-if
+            perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$F" || true
           }
 
-          patch_gradle_app() {
-            local FILE="$1"
-            [ -f "$FILE" ] || return 0
-            # 4) quitar dependencias obsoletas/duplicadas
-            sed -i -E '/"androidx\.appcompat:appcompat:1\.3\.1"/d' "$FILE" || true
-            sed -i -E '/"androidx\.core:core:1\.1\.0"/d' "$FILE" || true
-            sed -i -E '/"androidx\.core:core:1\.6\.\+"/d' "$FILE" || true
-            sed -i -E '/"androidx\.webkit:webkit:1\.4\.0"/d' "$FILE" || true
-            sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d' "$FILE" || true
-            sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$FILE" || true
+          patch_app_deps() {
+            local F="$1"; [ -f "$F" ] || return 0
+            echo "▶ Limpiando dependencias AndroidX antiguas en $F…"
 
-            # 5) inyectar BoM Firebase + messaging sin versión (si no existe)
-            if ! grep -q 'platform("com.google.firebase:firebase-bom' "$FILE"; then
-              perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$FILE" || true
+            # Elimina CUALQUIER línea fija de appcompat/core/webkit/legacy dentro del bloque SUB-PROJECT
+            perl -0777 -pe 's#(// SUB-PROJECT DEPENDENCIES START.*?// SUB-PROJECT DEPENDENCIES END)#my $b=$1; $b=~s/^.*androidx\.appcompat:appcompat:[^\n]*\n//mg; $b=~s/^.*androidx\.core:core:[^\n]*\n//mg; $b=~s/^.*androidx\.webkit:webkit:[^\n]*\n//mg; $b=~s/^.*androidx\.legacy:legacy-support-v4:[^\n]*\n//mg; $b=~s/^.*com\.google\.firebase:firebase-messaging:[^\n]*\n//mg; $b#se' -i "$F"
+
+            # Asegura BoM de Firebase + messaging sin versión dentro de dependencies { }
+            if grep -q 'dependencies\s*{' "$F"; then
+              if ! grep -q 'com.google.firebase:firebase-bom' "$F"; then
+                perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$F"
+              fi
             fi
 
-            # 6) ABI filters (AAB sin flavors)
-            if grep -q 'defaultConfig\s*{' "$FILE"; then
-              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
+            # Inyecta abiFilters (AAB sin flavors)
+            if grep -q 'defaultConfig\s*{' "$F"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$F" || true
             fi
           }
 
-          patch_gradle_common "$ROOT_GRADLE"
-          patch_gradle_common "$APP_GRADLE"
-          patch_gradle_app "$APP_GRADLE"
+          patch_common "$ROOT_GRADLE"
+          patch_common "$APP_GRADLE"
+          patch_app_deps "$APP_GRADLE"
 
-          echo "---- build.gradle (app) preview ----"
-          sed -n '1,340p' "$APP_GRADLE" || true
-          echo "---- gradle.properties ----"
-          cat platforms/android/gradle.properties || true
+          echo "---- build.gradle (app) preview (deps) ----"
+          sed -n '/dependencies\s*{/,/^\}/p' "$APP_GRADLE" || true
 
           ionic cordova clean android || true
 
@@ -122,19 +104,17 @@ workflows:
           ionic cordova build android --debug -- --packageType=apk --stacktrace --info --warning-mode=all
           EXIT=$?
           if [ $EXIT -ne 0 ]; then
-            echo "⚠ cordova build falló, intento Gradle directo…"
             WRAP=""
             if [ -x platforms/android/gradlew ]; then WRAP="platforms/android/gradlew";
             elif [ -x platforms/android/tools/gradlew ]; then WRAP="platforms/android/tools/gradlew"; fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              "$WRAP" --version
               "$WRAP" :app:properties --warning-mode=all
               "$WRAP" cdvPrintProps --warning-mode=all || true
               "$WRAP" :app:assembleDebug --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
             else
-              echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
+              echo "❌ No existe gradle wrapper"
             fi
           fi
           exit $EXIT
@@ -142,10 +122,6 @@ workflows:
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
-
-  # -----------------------------------------------------------------
-  # RELEASE: Firma con keystore y genera AAB para publicar en Play
-  # -----------------------------------------------------------------
   build-android-release:
     name: Moodle App Build for Android (RELEASE AAB firmado para Play)
     max_build_duration: 60
@@ -157,8 +133,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.upc.moodleapp"
         APP_NAME: "Moodle UPC"
-        ANDROID_NDK_VERSION: "26.1.10909125"  # soporte 16KB
-
+        ANDROID_NDK_VERSION: "26.1.10909125"
     scripts:
       - name: Instalar dependencias
         script: |
@@ -173,26 +148,15 @@ workflows:
           rm -rf node_modules/.cache || true
           ionic build
 
-      - name: Recursos (icon/adaptive) y plataforma + Ajustes 16KB
+      - name: Preparar plataforma + Ajustes AGP8/16KB + Limpieza deps viejas
         script: |
           set -e
-          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
-
-          mkdir -p resources/android
-          cp resources/icon.png resources/android/icon-foreground.png
-          cp resources/icon.png resources/android/icon-background.png
           ionic cordova resources android --force --icon || true
-
           ionic cordova platform add android@13
           ionic cordova prepare android
 
-          echo "▶ Árbol platforms/android:"
-          find platforms/android -maxdepth 3 -type f \( -name "gradle-wrapper.properties" -o -name "build.gradle" \) | sed 's#^#  - #'
-
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
-          if [ -n "$WRAPPER_FILE" ] && [ -f "$WRAPPER_FILE" ]; then
-            sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
-          fi
+          [ -n "$WRAPPER_FILE" ] && sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE" || true
 
           {
             echo "android.useAndroidX=true"
@@ -205,40 +169,40 @@ workflows:
             echo 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8 -XX:+UseParallelGC'
           } >> platforms/android/gradle.properties
 
-          # Parches AGP8 + deps modernas (sin resolutionStrategy para evitar YAML issues)
           APP_GRADLE="platforms/android/app/build.gradle"
           ROOT_GRADLE="platforms/android/build.gradle"
-          patch_gradle_common() {
-            local FILE="$1"
-            [ -f "$FILE" ] || return 0
-            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$FILE" || true
-            sed -i -E '/buildToolsVersion/d' "$FILE" || true
-            perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$FILE" || true
-          }
-          patch_gradle_app() {
-            local FILE="$1"
-            [ -f "$FILE" ] || return 0
-            sed -i -E '/"androidx\.appcompat:appcompat:1\.3\.1"/d' "$FILE" || true
-            sed -i -E '/"androidx\.core:core:1\.1\.0"/d' "$FILE" || true
-            sed -i -E '/"androidx\.core:core:1\.6\.\+"/d' "$FILE" || true
-            sed -i -E '/"androidx\.webkit:webkit:1\.4\.0"/d' "$FILE" || true
-            sed -i -E '/"androidx\.legacy:legacy-support-v4:1\.0\.0"/d' "$FILE" || true
-            sed -i -E '/"com\.google\.firebase:firebase-messaging:23\.\+"/d' "$FILE" || true
 
-            if ! grep -q 'platform("com.google.firebase:firebase-bom' "$FILE"; then
-              perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$FILE" || true
+          patch_common() {
+            local F="$1"; [ -f "$F" ] || return 0
+            perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$F" || true
+            sed -i -E '/buildToolsVersion/d' "$F" || true
+            perl -0777 -pe 's/if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvBuildMultipleApks\s*\)\s*\)\s*\{.*?\}\s*else\s*if\s*\(\s*Boolean\.valueOf\s*\(\s*cdvVersionCodeForceAbiDigit\s*\)\s*\)\s*\{.*?\}//gs' -i "$F" || true
+          }
+
+          patch_app_deps() {
+            local F="$1"; [ -f "$F" ] || return 0
+            # limpiar versiones fijas viejas en bloque SUB-PROJECT
+            perl -0777 -pe 's#(// SUB-PROJECT DEPENDENCIES START.*?// SUB-PROJECT DEPENDENCIES END)#my $b=$1; $b=~s/^.*androidx\.appcompat:appcompat:[^\n]*\n//mg; $b=~s/^.*androidx\.core:core:[^\n]*\n//mg; $b=~s/^.*androidx\.webkit:webkit:[^\n]*\n//mg; $b=~s/^.*androidx\.legacy:legacy-support-v4:[^\n]*\n//mg; $b=~s/^.*com\.google\.firebase:firebase-messaging:[^\n]*\n//mg; $b#se' -i "$F"
+
+            # BoM + messaging
+            if grep -q 'dependencies\s*{' "$F"; then
+              if ! grep -q 'com.google.firebase:firebase-bom' "$F"; then
+                perl -0777 -pe 's/(dependencies\s*\{)/\1\n    implementation platform("com.google.firebase:firebase-bom:33.5.1")\n    implementation "com.google.firebase:firebase-messaging"/s' -i "$F"
+              fi
             fi
 
-            if grep -q 'defaultConfig\s*{' "$FILE"; then
-              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$FILE" || true
+            # ABI filters
+            if grep -q 'defaultConfig\s*{' "$F"; then
+              perl -0777 -pe 's/(defaultConfig\s*\{[^}]*)(\})/\1\n    ndk {\n      abiFilters "arm64-v8a","armeabi-v7a"\n    }\n  \2/s' -i "$F" || true
             fi
           }
-          patch_gradle_common "$ROOT_GRADLE"
-          patch_gradle_common "$APP_GRADLE"
-          patch_gradle_app "$APP_GRADLE"
 
-          echo "---- build.gradle (app) preview ----"
-          sed -n '1,360p' "$APP_GRADLE" || true
+          patch_common "$ROOT_GRADLE"
+          patch_common "$APP_GRADLE"
+          patch_app_deps "$APP_GRADLE"
+
+          echo "---- build.gradle (app) deps ----"
+          sed -n '/dependencies\s*{/,/^\}/p' "$APP_GRADLE" || true
           echo "---- gradle.properties ----"
           cat platforms/android/gradle.properties || true
 
@@ -247,24 +211,20 @@ workflows:
       - name: Restaurar google-services.json (Firebase)
         script: |
           set -e
-          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
-            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
-          fi
+          [ -n "${GOOGLE_SERVICES_JSON_B64:-}" ] || { echo "❌ Falta GOOGLE_SERVICES_JSON_B64"; exit 1; }
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
           ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
-          mkdir -p platforms/android/app src platforms/android/app/src/release
+          mkdir -p platforms/android/app/src/release
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
-          if ! grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
-            echo "❌ google-services.json no corresponde a $PACKAGE_NAME"; exit 1
-          fi
+          grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json || { echo "❌ package_name no coincide"; exit 1; }
 
-      - name: Sanity check del keystore (firma)
+      - name: Keystore y build.json (firma)
         script: |
           set -e
           for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
+            [ -n "${!v:-}" ] || { echo "❌ Falta $v"; exit 1; }
           done
           ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
           ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
@@ -272,6 +232,7 @@ workflows:
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null || { echo "❌ STOREPASS incorrecto"; exit 1; }
           TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]'); [ -z "$TYPE" ] && TYPE="jks"
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1 || { echo "❌ Alias/KEYPASS incorrectos"; exit 1; }
+
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -288,28 +249,26 @@ workflows:
           EOF
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: Build RELEASE AAB firmado (compatibilidad 16KB) con fallback y stacktrace
+      - name: Build RELEASE AAB firmado (con fallback)
         script: |
           set -e
           set +e
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle --stacktrace --info --warning-mode=all
           EXIT=$?
           if [ $EXIT -ne 0 ]; then
-            echo "⚠ cordova build falló, intento Gradle directo…"
             WRAP=""
             if [ -x platforms/android/gradlew ]; then WRAP="platforms/android/gradlew";
             elif [ -x platforms/android/tools/gradlew ]; then WRAP="platforms/android/tools/gradlew"; fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              "$WRAP" --version
               "$WRAP" :app:properties --warning-mode=all
               "$WRAP" cdvPrintProps --warning-mode=all || true
               "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
-              echo "▶ Dump de build.gradle (app) para diagnóstico"
-              sed -n '1,360p' platforms/android/app/build.gradle || true
+              echo "---- build.gradle (app) deps ----"
+              sed -n '/dependencies\s*{/,/^\}/p' platforms/android/app/build.gradle || true
             else
-              echo "❌ No existe gradle wrapper ni en platforms/android/gradlew ni en platforms/android/tools/gradlew"
+              echo "❌ No existe gradle wrapper"
             fi
           fi
           exit $EXIT
