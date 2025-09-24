@@ -15,33 +15,28 @@ workflows:
           set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
-
       - name: Limpiar cachés/artefactos
         script: |
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           rm -rf ~/.gradle/caches/build-cache-* || true
-
       - name: Compilar web (Ionic)
         script: |
           set -e
           ionic build
-
-      - name: Preparar plataforma + ajustes AGP8/16KB + forzar versiones
+      - name: Preparar plataforma + AGP8/16KB + forzar versiones (sin heredocs)
         script: |
           set -e
           ionic cordova resources android --force --icon || true
           ionic cordova platform add android@13
           ionic cordova prepare android
 
-          # Gradle wrapper 8.4 (16KB pages)
           WRAPPER_FILE="$(find platforms/android -path '*/gradle/wrapper/gradle-wrapper.properties' | head -n1 || true)"
           if [ -n "$WRAPPER_FILE" ]; then
             sed -i -E 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip#g' "$WRAPPER_FILE"
           fi
 
-          # gradle.properties (SDK/NDK + Google Services plugin + no multi-APK)
           {
             echo "android.useAndroidX=true"
             echo "android.enableJetifier=true"
@@ -50,7 +45,6 @@ workflows:
             echo "cdvTargetSdkVersion=35"
             echo "cdvMinSdkVersion=23"
             echo "cdvBuildMultipleApks=false"
-            # evitar fallo del plugin de google services
             echo "cdvPluginGoogleServicesVersion=4.4.2"
             echo "cdvGradlePluginGoogleServicesVersion=4.4.2"
             echo "cdvGRADLE_PLUGIN_GOOGLE_SERVICES_VERSION=4.4.2"
@@ -60,38 +54,19 @@ workflows:
           ROOT_GRADLE="platforms/android/build.gradle"
           APP_GRADLE="platforms/android/app/build.gradle"
 
-          # Ajustes AGP8 (lint/bt) si existen
+          # Ajustes AGP8 seguros
           for F in "$ROOT_GRADLE" "$APP_GRADLE"; do
             [ -f "$F" ] || continue
             perl -0777 -pe 's/lintOptions\s*\{\s*abortOnError\s+false\s*\}/lint {\n  abortOnError false\n}/g' -i "$F" || true
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$F" || true
           done
 
-          # ======= Forzado de versiones (ANULA lo que reescriben los plugins) =======
+          # Forzar versiones sin heredocs (evita romper YAML)
           if [ -f "$ROOT_GRADLE" ]; then
-            cat >> "$ROOT_GRADLE" <<'FORCEBLOCK'
-
-/* ---- Versions forced by CI to keep AGP8 / SDK 35 happy ---- */
-allprojects {
-  configurations.all {
-    resolutionStrategy {
-      force 'androidx.core:core:1.12.0'
-      force 'androidx.appcompat:appcompat:1.6.1'
-      force 'androidx.webkit:webkit:1.8.0'
-      // Evita 23.+ si el plugin lo pide: usa una versión estable conocida
-      force 'com.google.firebase:firebase-messaging:23.4.1'
-    }
-  }
-}
-FORCEBLOCK
+            printf '\n// Versions forced by CI to keep AGP8 / SDK35 stable\nallprojects {\n  configurations.all {\n    resolutionStrategy {\n      force "androidx.core:core:1.12.0"\n      force "androidx.appcompat:appcompat:1.6.1"\n      force "androidx.webkit:webkit:1.8.0"\n      force "com.google.firebase:firebase-messaging:23.4.1"\n    }\n  }\n}\n' >> "$ROOT_GRADLE"
           fi
-          # ===========================================================================
-
-          echo "---- PREV (root) tail build.gradle ----"
-          tail -n 60 "$ROOT_GRADLE" || true
 
           ionic cordova clean android || true
-
       - name: Compilar APK (DEBUG) con diagnóstico
         script: |
           set -e
@@ -104,13 +79,12 @@ FORCEBLOCK
             elif [ -x platforms/android/tools/gradlew ]; then WRAP="platforms/android/tools/gradlew"; fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              "$WRAP" :app:dependencies --configuration releaseRuntimeClasspath --no-daemon | head -n 200 || true
+              "$WRAP" :app:dependencies --configuration debugRuntimeClasspath --no-daemon | head -n 200 || true
               "$WRAP" :app:assembleDebug --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
             fi
           fi
           exit $EXIT
-
     artifacts:
       - platforms/android/app/build/outputs/apk/debug/*.apk
 
@@ -132,15 +106,13 @@ FORCEBLOCK
           set -e
           npm install -g @ionic/cli cordova cordova-res gulp
           npm ci || npm install
-
       - name: Limpiar y compilar web (Ionic)
         script: |
           set -e
           rm -rf www platforms/android || true
           rm -rf node_modules/.cache || true
           ionic build
-
-      - name: Preparar plataforma + ajustes AGP8/16KB + forzar versiones
+      - name: Preparar plataforma + AGP8/16KB + forzar versiones (sin heredocs)
         script: |
           set -e
           ionic cordova resources android --force --icon || true
@@ -173,29 +145,11 @@ FORCEBLOCK
             sed -i -E '/^[[:space:]]*buildToolsVersion[[:space:]]+/d' "$F" || true
           done
 
-          # Fuerza de versiones (anula lo que reescriben los plugins)
           if [ -f "$ROOT_GRADLE" ]; then
-            cat >> "$ROOT_GRADLE" <<'FORCEBLOCK'
-
-/* ---- Versions forced by CI to keep AGP8 / SDK 35 happy ---- */
-allprojects {
-  configurations.all {
-    resolutionStrategy {
-      force 'androidx.core:core:1.12.0'
-      force 'androidx.appcompat:appcompat:1.6.1'
-      force 'androidx.webkit:webkit:1.8.0'
-      force 'com.google.firebase:firebase-messaging:23.4.1'
-    }
-  }
-}
-FORCEBLOCK
+            printf '\n// Versions forced by CI to keep AGP8 / SDK35 stable\nallprojects {\n  configurations.all {\n    resolutionStrategy {\n      force "androidx.core:core:1.12.0"\n      force "androidx.appcompat:appcompat:1.6.1"\n      force "androidx.webkit:webkit:1.8.0"\n      force "com.google.firebase:firebase-messaging:23.4.1"\n    }\n  }\n}\n' >> "$ROOT_GRADLE"
           fi
 
-          echo "---- Root build.gradle (cola) ----"
-          tail -n 60 "$ROOT_GRADLE" || true
-
           ionic cordova clean android || true
-
       - name: Restaurar google-services.json (Firebase)
         script: |
           set -e
@@ -207,7 +161,6 @@ FORCEBLOCK
           cp -f /tmp/google-services.json platforms/android/app/google-services.json
           cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
           grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json || { echo "❌ package_name no coincide"; exit 1; }
-
       - name: Keystore y build.json (firma)
         script: |
           set -e
@@ -220,7 +173,6 @@ FORCEBLOCK
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null || { echo "❌ STOREPASS incorrecto"; exit 1; }
           TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]'); [ -z "$TYPE" ] && TYPE="jks"
           keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" -alias "$CM_KEY_ALIAS" -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1 || { echo "❌ Alias/KEYPASS incorrectos"; exit 1; }
-
           cat >/tmp/build.json <<EOF
           {
             "android": {
@@ -236,7 +188,6 @@ FORCEBLOCK
           }
           EOF
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
-
       - name: Build RELEASE AAB firmado (con fallback)
         script: |
           set -e
@@ -249,7 +200,6 @@ FORCEBLOCK
             elif [ -x platforms/android/tools/gradlew ]; then WRAP="platforms/android/tools/gradlew"; fi
             if [ -n "$WRAP" ]; then
               chmod +x "$WRAP"
-              echo "---- RESOLVED graph (releaseRuntimeClasspath) ----"
               "$WRAP" :app:dependencies --configuration releaseRuntimeClasspath --no-daemon | head -n 300 || true
               "$WRAP" :app:bundleRelease --stacktrace --info --warning-mode=all --no-daemon
               EXIT=$?
@@ -258,7 +208,6 @@ FORCEBLOCK
             fi
           fi
           exit $EXIT
-
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
       - platforms/android/app/build/outputs/**/*.apk
