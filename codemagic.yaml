@@ -60,7 +60,6 @@ workflows:
         script: |
           cd android
           ./gradlew clean
-          # El mapping.txt y native-debug-symbols.zip se generan si el proyecto está configurado (ver nota abajo).
           ./gradlew --stacktrace --no-daemon bundleRelease
       - name: Recopilar mapping y símbolos nativos
         script: |
@@ -82,7 +81,7 @@ workflows:
       - android_artifacts/**/*
 
   # =========================
-  # iOS (sin cambios por ahora; puedes usarlos cuando quieras)
+  # iOS DEV (TestFlight interno)
   # =========================
   build-ios-dev:
     name: iOS Dev (TestFlight interno)
@@ -91,7 +90,7 @@ workflows:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # APP_STORE_CONNECT_*
+        - apple_api_key_group   # (opcional, ya no necesaria si usas integration)
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -109,7 +108,7 @@ workflows:
         script: |
           cd ios/App
           pod install
-      - name: Code signing automático
+      - name: Code signing automático (App Store Connect integration)
         script: |
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
@@ -120,6 +119,19 @@ workflows:
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
       - name: Export IPA
         script: |
+          # ExportOptions.plist básico para TestFlight / App Store
+          cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>destination</key><string>export</string>
+            <key>manageAppVersionAndBuildNumber</key><true/>
+          </dict>
+          </plist>
+          PLIST
           xcodebuild -exportArchive \
             -archivePath $CM_BUILD_DIR/App.xcarchive \
             -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
@@ -129,11 +141,14 @@ workflows:
       - App.xcarchive
     publishing:
       app_store_connect:
-        auth: api_key
+        auth: integration
         submit_to_testflight: true
         beta_groups:
           - Internal Testers
 
+  # =========================
+  # iOS RELEASE (App Store / TestFlight)
+  # =========================
   build-ios-release:
     name: iOS Release (App Store / TestFlight)
     max_build_duration: 120
@@ -141,7 +156,7 @@ workflows:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # APP_STORE_CONNECT_*
+        - apple_api_key_group   # (opcional, ya no necesaria si usas integration)
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -159,7 +174,7 @@ workflows:
         script: |
           cd ios/App
           pod install
-      - name: Automatic code signing (App Store)
+      - name: Automatic code signing (integration)
         script: |
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
@@ -176,8 +191,6 @@ workflows:
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store</string>
-            <key>uploadBitcode</key><false/>
-            <key>compileBitcode</key><true/>
             <key>signingStyle</key><string>automatic</string>
             <key>destination</key><string>export</string>
             <key>manageAppVersionAndBuildNumber</key><true/>
@@ -193,7 +206,7 @@ workflows:
       - App.xcarchive
     publishing:
       app_store_connect:
-        auth: api_key
+        auth: integration
         submit_to_testflight: true
         beta_groups:
           - Internal Testers
