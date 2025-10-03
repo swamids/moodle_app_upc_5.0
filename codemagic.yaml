@@ -81,16 +81,16 @@ workflows:
       - android_artifacts/**/*
 
   # =========================
-  # iOS DEV (TestFlight interno)
+  # iOS DEV (TestFlight interno via API key)
   # =========================
   build-ios-dev:
-    name: iOS Dev (TestFlight interno)
+    name: iOS Dev (TestFlight interno via API key)
     max_build_duration: 90
     environment:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # (opcional, ya no necesaria si usas integration)
+        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -108,8 +108,12 @@ workflows:
         script: |
           cd ios/App
           pod install
-      - name: Code signing automático (App Store Connect integration)
+      - name: Code signing automático con API key (fetch & keychain)
         script: |
+          # Usa las variables del grupo apple_api_key_group
+          app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+                                      --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+                                      --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
           app-store-connect keychain add-certificates
@@ -119,7 +123,6 @@ workflows:
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
       - name: Export IPA
         script: |
-          # ExportOptions.plist básico para TestFlight / App Store
           cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -136,27 +139,29 @@ workflows:
             -archivePath $CM_BUILD_DIR/App.xcarchive \
             -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
             -exportPath $CM_BUILD_DIR/ipa
+      - name: Publicar en TestFlight (API key, sin publishing:)
+        script: |
+          # Sube el IPA a App Store Connect usando las mismas credenciales
+          app-store-connect publish \
+            --path "$CM_BUILD_DIR/ipa/App.ipa" \
+            --primary-bundle-id "$IOS_BUNDLE_ID" \
+            --submit-to-testflight true \
+            --beta-group "Internal Testers"
     artifacts:
       - ipa/*.ipa
       - App.xcarchive
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
 
   # =========================
-  # iOS RELEASE (App Store / TestFlight)
+  # iOS RELEASE (App Store / TestFlight via API key)
   # =========================
   build-ios-release:
-    name: iOS Release (App Store / TestFlight)
+    name: iOS Release (App Store / TestFlight via API key)
     max_build_duration: 120
     environment:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # (opcional, ya no necesaria si usas integration)
+        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -174,8 +179,11 @@ workflows:
         script: |
           cd ios/App
           pod install
-      - name: Automatic code signing (integration)
+      - name: Automatic code signing con API key
         script: |
+          app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+                                      --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+                                      --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
           app-store-connect keychain add-certificates
@@ -201,13 +209,13 @@ workflows:
             -archivePath $CM_BUILD_DIR/App.xcarchive \
             -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
             -exportPath $CM_BUILD_DIR/ipa
+      - name: Publicar en TestFlight (API key)
+        script: |
+          app-store-connect publish \
+            --path "$CM_BUILD_DIR/ipa/App.ipa" \
+            --primary-bundle-id "$IOS_BUNDLE_ID" \
+            --submit-to-testflight true \
+            --beta-group "Internal Testers"
     artifacts:
       - ipa/*.ipa
       - App.xcarchive
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
-        # submit_to_app_store: true
