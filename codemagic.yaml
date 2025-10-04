@@ -128,14 +128,14 @@ workflows:
             exit 1
           fi
 
-      - name: Habilitar R8/ProGuard + símbolos nativos (parche en Gradle)
+      - name: Habilitar R8/ProGuard y símbolos nativos (sin editar build.gradle)
         script: |
           set -e
-          GRADLE_APP="platforms/android/app/build.gradle"
-          RULES="platforms/android/app/proguard-rules.pro"
-          mkdir -p "$(dirname "$RULES")"
+          AND_APP_DIR="platforms/android/app"
+          mkdir -p "$AND_APP_DIR"
 
-          # Escribir proguard-rules.pro de forma segura para YAML
+          # 1) Reglas ProGuard seguras para Cordova/Ionic + Firebase/Play Services
+          PRO="$AND_APP_DIR/proguard-rules.pro"
           printf '%s\n' \
             '-keep class org.apache.cordova.** { *; }' \
             '-keep class com.getcapacitor.** { *; }' \
@@ -145,30 +145,13 @@ workflows:
             '-keep class com.google.android.gms.** { *; }' \
             '-dontwarn com.google.firebase.**' \
             '-dontwarn com.google.android.gms.**' \
-          > "$RULES"
+          > "$PRO"
+          echo "✅ Escrito $PRO"
 
-          # Crear script Python como archivo temporal (sin heredoc) y ejecutarlo
-          cat > /tmp/patch_build.py <<'PYCODE'
-import re, io
-p = "platforms/android/app/build.gradle"
-with open(p, encoding="utf-8") as f:
-    s = f.read()
-
-def ensure_release_block(txt: str) -> str:
-    m = re.search(r'(buildTypes\s*\{\s*release\s*\{)(.*?)(\n\s*\}\s*\})', txt, re.S)
-    if m:
-        head, body, tail = m.groups()
-        def add_once(b, line):
-            return b if line in b else b + "\n            " + line
-        body = add_once(body, "minifyEnabled true")
-        body = add_once(body, "shrinkResources true")
-        if "proguardFiles" not in body:
-            body += "\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
-        if "debugSymbolLevel" not in body:
-            body += "\n            ndk {\n                debugSymbolLevel 'SYMBOL_TABLE'\n            }"
-        return txt[:m.start()] + head + body + tail + txt[m.end():]
-    # si no existe, insertar bloque completo dentro de android { }
-    return re.sub(r'(android\s*\{)', r"""\1
+          # 2) build-extras.gradle: Gradle fusiona este bloque con la app
+          EXTRAS="$AND_APP_DIR/build-extras.gradle"
+          cat > "$EXTRAS" <<'GRADLE'
+android {
     buildTypes {
         release {
             minifyEnabled true
@@ -179,18 +162,13 @@ def ensure_release_block(txt: str) -> str:
             }
         }
     }
-""", txt, count=1)
+}
+GRADLE
+          echo "✅ Escrito $EXTRAS"
 
-s2 = ensure_release_block(s)
-with open(p, "w", encoding="utf-8") as f:
-    f.write(s2)
-print("✅ build.gradle parcheado")
-PYCODE
-
-          python3 /tmp/patch_build.py
-
-          # Forzar R8 (compatibilidad con stacks antiguos)
+          # 3) Forzar R8 por compatibilidad
           echo -e '\n# Ensure R8\nandroid.enableR8=true\nandroid.enableR8.libraries=true' >> platforms/android/gradle.properties || true
+          echo "✅ R8 forzado en gradle.properties"
 
       - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
