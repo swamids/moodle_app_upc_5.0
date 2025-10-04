@@ -128,14 +128,17 @@ workflows:
             exit 1
           fi
 
-      - name: Habilitar R8/ProGuard + símbolos nativos (parche en Gradle)
+      - name: Activar R8/ProGuard + símbolos nativos (sin here-docs)
         script: |
           set -e
-          GRADLE_APP="platforms/android/app/build.gradle"
-          RULES="platforms/android/app/proguard-rules.pro"
-          mkdir -p "$(dirname "$RULES")"
+          GRADLE_APP_DIR="platforms/android/app"
+          GRADLE_APP="$GRADLE_APP_DIR/build.gradle"
+          RULES="$GRADLE_APP_DIR/proguard-rules.pro"
+          EXTRAS="$GRADLE_APP_DIR/build-extras.gradle"
 
-          # Escribir proguard-rules.pro de forma segura para YAML
+          mkdir -p "$GRADLE_APP_DIR"
+
+          echo "▶ Escribiendo proguard-rules.pro"
           printf '%s\n' \
             '-keep class org.apache.cordova.** { *; }' \
             '-keep class com.getcapacitor.** { *; }' \
@@ -147,47 +150,28 @@ workflows:
             '-dontwarn com.google.android.gms.**' \
           > "$RULES"
 
-          # Parchear build.gradle para activar minify/shrink y símbolos nativos
-          python3 - <<'PY'
-import re, sys, io
-p = "platforms/android/app/build.gradle"
-s = open(p, encoding="utf-8").read()
-
-def ensure_release_block(txt: str) -> str:
-    # buscar bloque buildTypes { release { ... } }
-    m = re.search(r'(buildTypes\s*\{\s*release\s*\{)(.*?)(\n\s*\}\s*\})', txt, re.S)
-    if m:
-        head, body, tail = m.groups()
-        def add_once(body, line):
-            return body if line in body else body + "\n            " + line
-        body = add_once(body, "minifyEnabled true")
-        body = add_once(body, "shrinkResources true")
-        if "proguardFiles" not in body:
-            body = body + "\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
-        if "ndk {" not in body and "debugSymbolLevel" not in body:
-            body = body + "\n            ndk {\n                debugSymbolLevel 'SYMBOL_TABLE'\n            }"
-        return txt[:m.start()] + head + body + tail + txt[m.end():]
-    # si no existe, insertar bloque completo dentro de android { }
-    return re.sub(r'(android\s*\{)', r"""\1
+          echo "▶ Creando build-extras.gradle para buildTypes.release + símbolos nativos"
+          cat > "$EXTRAS" <<'GRADLE'
+android {
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             ndk {
+                // Genera el ZIP de símbolos nativos para Play Console
                 debugSymbolLevel 'SYMBOL_TABLE'
             }
         }
     }
-""", txt, count=1)
+}
+GRADLE
 
-s = ensure_release_block(s)
-open(p, "w", encoding="utf-8").write(s)
-print("✅ build.gradle parcheado")
-PY
-
-          # Forzar R8 (compatibilidad con stacks antiguos)
-          echo -e '\n# Ensure R8\nandroid.enableR8=true\nandroid.enableR8.libraries=true' >> platforms/android/gradle.properties || true
+          echo "▶ Forzando R8 en gradle.properties"
+          echo "" >> platforms/android/gradle.properties || true
+          echo "# Ensure R8 for release builds" >> platforms/android/gradle.properties
+          echo "android.enableR8=true" >> platforms/android/gradle.properties
+          echo "android.enableR8.libraries=true" >> platforms/android/gradle.properties
 
       - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
