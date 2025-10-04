@@ -12,22 +12,32 @@ workflows:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
-      - name: Set Node 20.18.0 (requerido por Moodle App 5.0)
+      - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
         script: |
-          export NVM_DIR="$HOME/.nvm"
-          # shellcheck source=/dev/null
-          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-          nvm install 20.18.0
-          nvm alias default 20.18.0
-          nvm use 20.18.0
+          set -euo pipefail
+          NODE_VER="20.18.0"
+          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          ARCH_RAW="$(uname -m)"
+          case "$ARCH_RAW" in
+            x86_64|amd64) ARCH="x64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
+          esac
+          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
+          INSTALL_DIR="$HOME/tools"
+          mkdir -p "${INSTALL_DIR}"
+          echo "Descargando ${URL}"
+          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
+          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
+          if [ ! -x "${NODE_BIN}/node" ]; then
+            echo "No se encontró binario de Node en ${NODE_BIN}"
+            exit 1
+          fi
+          export PATH="${NODE_BIN}:$PATH"
+          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
-          # Persistir en siguientes pasos
-          {
-            echo 'export NVM_DIR="$HOME/.nvm"'
-            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
-            echo 'nvm use 20.18.0 >/dev/null'
-          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -58,22 +68,32 @@ workflows:
         BRAND_COLOR: "#C8102E"
         # GOOGLE_SERVICES_JSON_B64 (opcional) para com.upc.moodleapp
     scripts:
-      - name: Set Node 20.18.0 (requerido por Moodle App 5.0)
+      - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
         script: |
-          export NVM_DIR="$HOME/.nvm"
-          # shellcheck source=/dev/null
-          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-          nvm install 20.18.0
-          nvm alias default 20.18.0
-          nvm use 20.18.0
+          set -euo pipefail
+          NODE_VER="20.18.0"
+          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          ARCH_RAW="$(uname -m)"
+          case "$ARCH_RAW" in
+            x86_64|amd64) ARCH="x64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
+          esac
+          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
+          INSTALL_DIR="$HOME/tools"
+          mkdir -p "${INSTALL_DIR}"
+          echo "Descargando ${URL}"
+          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
+          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
+          if [ ! -x "${NODE_BIN}/node" ]; then
+            echo "No se encontró binario de Node en ${NODE_BIN}"
+            exit 1
+          fi
+          export PATH="${NODE_BIN}:$PATH"
+          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
-          # Persistir en siguientes pasos
-          {
-            echo 'export NVM_DIR="$HOME/.nvm"'
-            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
-            echo 'nvm use 20.18.0 >/dev/null'
-          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -127,21 +147,32 @@ workflows:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
-      - name: Set Node 20.18.0 (alineado con app web)
+      - name: Install portable Node 20.18.0 (alineado con app web)
         script: |
-          export NVM_DIR="$HOME/.nvm"
-          # shellcheck source=/dev/null
-          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-          nvm install 20.18.0
-          nvm alias default 20.18.0
-          nvm use 20.18.0
+          set -euo pipefail
+          NODE_VER="20.18.0"
+          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          ARCH_RAW="$(uname -m)"
+          case "$ARCH_RAW" in
+            x86_64|amd64) ARCH="x64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
+          esac
+          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
+          INSTALL_DIR="$HOME/tools"
+          mkdir -p "${INSTALL_DIR}"
+          echo "Descargando ${URL}"
+          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
+          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
+          if [ ! -x "${NODE_BIN}/node" ]; then
+            echo "No se encontró binario de Node en ${NODE_BIN}"
+            exit 1
+          fi
+          export PATH="${NODE_BIN}:$PATH"
+          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
-          {
-            echo 'export NVM_DIR="$HOME/.nvm"'
-            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
-            echo 'nvm use 20.18.0 >/dev/null'
-          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -211,21 +242,32 @@ workflows:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
-      - name: Set Node 20.18.0 (alineado con app web)
+      - name: Install portable Node 20.18.0 (alineado con app web)
         script: |
-          export NVM_DIR="$HOME/.nvm"
-          # shellcheck source=/dev/null
-          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-          nvm install 20.18.0
-          nvm alias default 20.18.0
-          nvm use 20.18.0
+          set -euo pipefail
+          NODE_VER="20.18.0"
+          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          ARCH_RAW="$(uname -m)"
+          case "$ARCH_RAW" in
+            x86_64|amd64) ARCH="x64" ;;
+            arm64|aarch64) ARCH="arm64" ;;
+            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
+          esac
+          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
+          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
+          INSTALL_DIR="$HOME/tools"
+          mkdir -p "${INSTALL_DIR}"
+          echo "Descargando ${URL}"
+          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
+          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
+          if [ ! -x "${NODE_BIN}/node" ]; then
+            echo "No se encontró binario de Node en ${NODE_BIN}"
+            exit 1
+          fi
+          export PATH="${NODE_BIN}:$PATH"
+          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
-          {
-            echo 'export NVM_DIR="$HOME/.nvm"'
-            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
-            echo 'nvm use 20.18.0 >/dev/null'
-          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
