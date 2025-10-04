@@ -1,397 +1,277 @@
 workflows:
-  # =========================
-  # ANDROID (debug)
-  # =========================
+  # ------------------------------------------------------------
+  # DEBUG: APK sin firma (rápido para validar branding y estilos)
+  # ------------------------------------------------------------
   build-android-debug:
-    name: Android Debug (branding rápido)
+    name: Moodle App Build for Android (DEBUG - splash PNG preferencia)
     max_build_duration: 60
     environment:
-      groups:
-        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+      node: 20.18.0
+      java: 17
       vars:
-        ANDROID_PACKAGE: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
     scripts:
-      - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
+      - name: Instalar dependencias
         script: |
-          set -euo pipefail
-          NODE_VER="20.18.0"
-          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          ARCH_RAW="$(uname -m)"
-          case "$ARCH_RAW" in
-            x86_64|amd64) ARCH="x64" ;;
-            arm64|aarch64) ARCH="arm64" ;;
-            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
-          esac
-          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
-          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
-          INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
-          echo "Descargando ${URL}"
-          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
-          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
-          export PATH="${NODE_BIN}:$PATH"
-          node -v
-          npm -v
-          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
-          export PATH="${NODE_BIN}:\$PATH"
-          EOF
+          set -e
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
 
-      - name: Install Node deps
+      - name: Limpiar cachés/artefactos para forzar assets y estilos nuevos
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm ci
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          rm -rf ~/.gradle/caches/build-cache-* || true
 
-      - name: Ensure Capacitor CLI (local devDependency)
+      - name: Compilar web (Ionic) con estilos actualizados
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          if [ ! -x "./node_modules/.bin/cap" ]; then
-            npm i -D @capacitor/cli@^5
-          fi
-          ./node_modules/.bin/cap --version
+          set -e
+          ionic build
 
-      - name: Ensure @capacitor/android & add platform if missing
+      - name: Preparar recursos (icon/adaptive) y plataforma
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          if [ ! -d "node_modules/@capacitor/android" ]; then
-            npm i @capacitor/android@^5
-          fi
-          if [ ! -d "android" ]; then
-            ./node_modules/.bin/cap add android
-          fi
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          [ -f resources/android/logo.png ] || { echo "❌ Falta resources/android/logo.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
 
-      - name: Build web
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm run build
+          ionic cordova platform add android
+          ionic cordova clean android || true
 
-      - name: Capacitor sync
+      - name: Compilar APK (DEBUG)
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          ./node_modules/.bin/cap sync android
-
-      - name: Build Android Debug APK
-        script: |
-          cd android
-          ./gradlew assembleDebug
+          set -e
+          ionic cordova build android --debug -- --packageType=apk
 
     artifacts:
-      - android/app/build/outputs/**/*.apk
+      - platforms/android/app/build/outputs/apk/debug/*.apk
 
-  # =========================
-  # ANDROID (release con mapping + símbolos)
-  # =========================
+
+  # -----------------------------------------------------------------
+  # RELEASE: Firma con keystore y genera AAB para publicar en Play
+  # + mapping.txt (R8/ProGuard) + native-debug-symbols.zip
+  #
+  # Requiere grupo 'keystore_group':
+  #  - CM_KEYSTORE (base64 del .keystore/.jks)
+  #  - CM_KEYSTORE_PASSWORD
+  #  - CM_KEY_ALIAS
+  #  - CM_KEY_PASSWORD
+  #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
+  # -----------------------------------------------------------------
   build-android-release:
-    name: Android Release (AAB + mapping + símbolos)
-    max_build_duration: 90
+    name: Moodle App Build for Android (RELEASE AAB firmado + mapping + símbolos)
+    max_build_duration: 60
     environment:
+      node: 20.18.0
+      java: 17
       groups:
         - keystore_group
       vars:
-        ANDROID_PACKAGE: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
-        # GOOGLE_SERVICES_JSON_B64 (opcional) para com.upc.moodleapp
+        PACKAGE_NAME: "com.upc.moodleapp"
+        APP_NAME: "Moodle UPC"
+
     scripts:
-      - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
+      - name: Instalar dependencias
         script: |
-          set -euo pipefail
-          NODE_VER="20.18.0"
-          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          ARCH_RAW="$(uname -m)"
-          case "$ARCH_RAW" in
-            x86_64|amd64) ARCH="x64" ;;
-            arm64|aarch64) ARCH="arm64" ;;
-            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
-          esac
-          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
-          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
-          INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
-          echo "Descargando ${URL}"
-          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
-          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
-          export PATH="${NODE_BIN}:$PATH"
-          node -v
-          npm -v
-          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
-          export PATH="${NODE_BIN}:\$PATH"
-          EOF
+          set -e
+          npm install -g @ionic/cli cordova cordova-res gulp
+          npm ci || npm install
 
-      - name: Install Node deps
+      - name: Limpiar y compilar web (Ionic)
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm ci
+          set -e
+          rm -rf www platforms/android || true
+          rm -rf node_modules/.cache || true
+          ionic build
 
-      - name: Ensure Capacitor CLI (local devDependency)
+      - name: Recursos (icon/adaptive) y plataforma
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          if [ ! -x "./node_modules/.bin/cap" ]; then
-            npm i -D @capacitor/cli@^5
-          fi
-          ./node_modules/.bin/cap --version
+          set -e
+          [ -f resources/icon.png ] || { echo "❌ Falta resources/icon.png"; exit 1; }
+          mkdir -p resources/android
+          cp resources/icon.png resources/android/icon-foreground.png
+          cp resources/icon.png resources/android/icon-background.png
+          ionic cordova resources android --force --icon || true
 
-      - name: Ensure @capacitor/android & add platform if missing
+          ionic cordova platform add android
+          ionic cordova clean android || true
+
+      - name: Restaurar google-services.json (Firebase)
         script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          if [ ! -d "node_modules/@capacitor/android" ]; then
-            npm i @capacitor/android@^5
-          fi
-          if [ ! -d "android" ]; then
-            ./node_modules/.bin/cap add android
+          set -e
+          if [ -z "${GOOGLE_SERVICES_JSON_B64:-}" ]; then
+            echo "❌ Falta GOOGLE_SERVICES_JSON_B64 en el grupo 'keystore_group'"; exit 1
           fi
 
-      - name: Build web (prod)
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm run build
+          echo "▶ Restaurando google-services.json…"
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -d        > /tmp/google-services.json ) || \
+          ( printf "%s" "$GOOGLE_SERVICES_JSON_B64" | base64 -D        > /tmp/google-services.json )
 
-      - name: Capacitor sync (android)
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          ./node_modules/.bin/cap sync android
+          mkdir -p platforms/android/app src
+          cp -f /tmp/google-services.json platforms/android/app/google-services.json
+          mkdir -p platforms/android/app/src/release
+          cp -f /tmp/google-services.json platforms/android/app/src/release/google-services.json
 
-      - name: Decode google-services.json (si aplica)
-        script: |
-          if [[ -n "$GOOGLE_SERVICES_JSON_B64" ]]; then
-            echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
-          fi
-
-      - name: Gradle clean & bundleRelease (genera AAB, mapping y símbolos)
-        script: |
-          cd android
-          ./gradlew clean
-          ./gradlew --stacktrace --no-daemon bundleRelease
-
-      - name: Recopilar mapping y símbolos nativos
-        script: |
-          mkdir -p $CM_BUILD_DIR/android_artifacts
-          # mapping.txt (R8/ProGuard)
-          if [[ -f android/app/build/outputs/mapping/release/mapping.txt ]]; then
-            cp -f android/app/build/outputs/mapping/release/mapping.txt $CM_BUILD_DIR/android_artifacts/
+          echo "▶ Validando package_name esperado ($PACKAGE_NAME)…"
+          if grep -q "\"package_name\"[[:space:]]*:[[:space:]]*\"$PACKAGE_NAME\"" /tmp/google-services.json; then
+            echo "✅ google-services.json contiene $PACKAGE_NAME"
           else
-            echo "⚠️  No se encontró mapping.txt. ¿Está activado minifyEnabled true en build.gradle?"
+            echo "❌ El google-services.json no corresponde a $PACKAGE_NAME"
+            echo "   Paquetes encontrados:"
+            grep -o "\"package_name\"[^\"]*\"[^\"]*\"" /tmp/google-services.json | sed 's/.*"package_name":[[:space:]]*"\([^"]*\)".*/ - \1/'
+            exit 1
           fi
-          # native debug symbols
-          if [[ -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip ]]; then
-            cp -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip $CM_BUILD_DIR/android_artifacts/
+
+      - name: Habilitar R8/ProGuard + símbolos nativos (parche en Gradle)
+        script: |
+          set -e
+          GRADLE_APP="platforms/android/app/build.gradle"
+          RULES="platforms/android/app/proguard-rules.pro"
+
+          # Reglas básicas seguras para Ionic/Cordova + Firebase/Play Services
+          cat > "$RULES" <<'PRO'
+-keep class org.apache.cordova.** { *; }
+-keep class com.getcapacitor.** { *; }
+-keep class com.ionicframework.** { *; }
+-keep class io.ionic.** { *; }
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
+PRO
+
+          python3 - <<'PY'
+import re, io, sys
+p = "platforms/android/app/build.gradle"
+s = open(p, encoding="utf-8").read()
+
+# Asegurar bloque release con minify/shrink/proguard y símbolos nativos
+def patch_release(block):
+    needs = []
+    if 'minifyEnabled' not in block:
+        needs.append("            minifyEnabled true")
+    if 'shrinkResources' not in block:
+        needs.append("            shrinkResources true")
+    if 'proguardFiles' not in block:
+        needs.append("            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'")
+    if 'ndk {' not in block:
+        needs.append("            ndk {\n                debugSymbolLevel 'SYMBOL_TABLE'\n            }")
+    if needs:
+        # insertar justo antes del cierre de la llave de release
+        block = re.sub(r'\n\s*\}\s*$', '\n' + '\n'.join(needs) + '\n        }\n', block)
+    return block
+
+pattern = re.compile(r'(buildTypes\s*\{\s*release\s*\{)(.*?)(\n\s*\}\s*\})', re.S)
+m = pattern.search(s)
+if m:
+    head, body, tail = m.groups()
+    body2 = patch_release(body)
+    s = s[:m.start()] + head + body2 + tail + s[m.end():]
+else:
+    # Si no hay buildTypes/release, añadir un bloque completo
+    insert = """
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
+        }
+    }
+"""
+    s = re.sub(r'(android\s*\{)', r'\1' + insert, s, count=1)
+
+open(p, 'w', encoding="utf-8").write(s)
+print("✅ Patcheado", p)
+PY
+
+          # Forzar R8 (por compatibilidad con stacks antiguos de Cordova).
+          echo -e '\n# Ensure R8\nandroid.enableR8=true\nandroid.enableR8.libraries=true' >> platforms/android/gradle.properties || true
+
+      - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
+        script: |
+          set -e
+          for v in CM_KEYSTORE CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            [ -n "${!v:-}" ] || { echo "❌ Falta $v en 'keystore_group'"; exit 1; }
+          done
+
+          echo "▶ Restaurando /tmp/release.keystore…"
+          ( printf "%s" "$CM_KEYSTORE" | base64 --decode > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -d        > /tmp/release.keystore ) || \
+          ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
+
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "❌ Keystore vacío o corrupto"; exit 1;
+          fi
+
+          echo "▶ Validando STOREPASS…"
+          if ! keytool -list -v -keystore /tmp/release.keystore -storepass "$CM_KEYSTORE_PASSWORD" >/tmp/ksinfo.txt 2>/dev/null; then
+            echo "❌ Store password (CM_KEYSTORE_PASSWORD) incorrecto."; exit 1
+          fi
+
+          echo "▶ Detectando tipo de keystore…"
+          TYPE=$(grep -i "Keystore type:" /tmp/ksinfo.txt | awk -F': ' '{print $2}' | tr '[:upper:]' '[:lower:]')
+          [ -z "$TYPE" ] && TYPE="jks"
+          echo "✅ Keystore type: $TYPE"
+
+          echo "▶ Validando ALIAS y KEYPASS…"
+          if ! keytool -list -v \
+            -keystore /tmp/release.keystore \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -alias "$CM_KEY_ALIAS" \
+            -keypass "$CM_KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "❌ Alias ($CM_KEY_ALIAS) o key password (CM_KEY_PASSWORD) incorrectos."; exit 1
+          fi
+          echo "✅ Alias y key password válidos."
+
+          echo "▶ Creando /tmp/build.json…"
+          cat >/tmp/build.json <<EOF
+          {
+            "android": {
+              "release": {
+                "keystore": "/tmp/release.keystore",
+                "storePassword": "$CM_KEYSTORE_PASSWORD",
+                "alias": "$CM_KEY_ALIAS",
+                "password": "$CM_KEY_PASSWORD",
+                "keystoreType": "$TYPE",
+                "packageType": "bundle"
+              }
+            }
+          }
+          EOF
+          sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
+
+      - name: Build RELEASE AAB firmado (genera mapping y símbolos nativos)
+        script: |
+          set -e
+          ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
+
+          echo "▶ Artefactos generados:"
+          find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
+
+          # Comprobaciones de mapping y symbols
+          test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
+          if [ -f platforms/android/app/build/outputs/mapping/release/mapping.txt ]; then
+            echo "✅ mapping.txt encontrado"
           else
-            echo "⚠️  No se encontró native-debug-symbols.zip. ¿Está configurado ndk.debugSymbolLevel 'SYMBOL_TABLE' en build.gradle?"
+            echo "⚠️ No se encontró mapping.txt (revisa minifyEnabled/proguard)."
+          fi
+          if [ -f platforms/android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip ]; then
+            echo "✅ native-debug-symbols.zip encontrado"
+          else
+            echo "⚠️ No se encontró native-debug-symbols.zip (debugSymbolLevel)."
           fi
 
     artifacts:
-      - android/app/build/outputs/**/*.aab
-      - android_artifacts/**/*
-
-  # =========================
-  # iOS DEV (TestFlight interno via API key)
-  # =========================
-  build-ios-dev:
-    name: iOS Dev (TestFlight interno via API key)
-    max_build_duration: 90
-    environment:
-      xcode: latest
-      cocoapods: default
-      groups:
-        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY (.p8)
-      vars:
-        IOS_BUNDLE_ID: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
-    scripts:
-      - name: Install portable Node 20.18.0 (alineado con app web)
-        script: |
-          set -euo pipefail
-          NODE_VER="20.18.0"
-          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          ARCH_RAW="$(uname -m)"
-          case "$ARCH_RAW" in
-            x86_64|amd64) ARCH="x64" ;;
-            arm64|aarch64) ARCH="arm64" ;;
-            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
-          esac
-          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
-          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
-          INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
-          echo "Descargando ${URL}"
-          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
-          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
-          export PATH="${NODE_BIN}:$PATH"
-          node -v
-          npm -v
-          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
-          export PATH="${NODE_BIN}:\$PATH"
-          EOF
-
-      - name: Install Node deps
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm ci
-
-      - name: Build web
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm run build
-
-      - name: Capacitor sync
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          ./node_modules/.bin/cap sync ios
-
-      - name: CocoaPods install
-        script: |
-          cd ios/App
-          pod install
-
-      - name: Code signing automático con API key (fetch & keychain)
-        script: |
-          app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-                                      --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-                                      --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-          app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain initialize
-          app-store-connect keychain add-certificates
-
-      - name: Xcode archive
-        script: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
-
-      - name: Export IPA
-        script: |
-          cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>destination</key><string>export</string>
-            <key>manageAppVersionAndBuildNumber</key><true/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath $CM_BUILD_DIR/App.xcarchive \
-            -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
-            -exportPath $CM_BUILD_DIR/ipa
-
-      - name: Publicar en TestFlight (API key, sin publishing:)
-        script: |
-          app-store-connect publish \
-            --path "$CM_BUILD_DIR/ipa/App.ipa" \
-            --primary-bundle-id "$IOS_BUNDLE_ID" \
-            --submit-to-testflight true \
-            --beta-group "Internal Testers"
-
-    artifacts:
-      - ipa/*.ipa
-      - App.xcarchive
-
-  # =========================
-  # iOS RELEASE (App Store / TestFlight via API key)
-  # =========================
-  build-ios-release:
-    name: iOS Release (App Store / TestFlight via API key)
-    max_build_duration: 120
-    environment:
-      xcode: latest
-      cocoapods: default
-      groups:
-        - apple_api_key_group
-      vars:
-        IOS_BUNDLE_ID: "com.upc.moodleapp"
-        BRAND_COLOR: "#C8102E"
-    scripts:
-      - name: Install portable Node 20.18.0 (alineado con app web)
-        script: |
-          set -euo pipefail
-          NODE_VER="20.18.0"
-          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          ARCH_RAW="$(uname -m)"
-          case "$ARCH_RAW" in
-            x86_64|amd64) ARCH="x64" ;;
-            arm64|aarch64) ARCH="arm64" ;;
-            *) echo "Arquitectura no soportada: $ARCH_RAW"; exit 1 ;;
-          esac
-          TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
-          URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
-          INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
-          echo "Descargando ${URL}"
-          curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
-          NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
-          export PATH="${NODE_BIN}:$PATH"
-          node -v
-          npm -v
-          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
-          export PATH="${NODE_BIN}:\$PATH"
-          EOF
-
-      - name: Install Node deps
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm ci
-
-      - name: Build web (prod)
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npm run build
-
-      - name: Capacitor sync
-        script: |
-          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          ./node_modules/.bin/cap sync ios
-
-      - name: CocoaPods install
-        script: |
-          cd ios/App
-          pod install
-
-      - name: Automatic code signing con API key
-        script: |
-          app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-                                      --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-                                      --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
-          app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain initialize
-          app-store-connect keychain add-certificates
-
-      - name: Xcode archive
-        script: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
-
-      - name: Export IPA (App Store)
-        script: |
-          cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>destination</key><string>export</string>
-            <key>manageAppVersionAndBuildNumber</key><true/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath $CM_BUILD_DIR/App.xcarchive \
-            -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
-            -exportPath $CM_BUILD_DIR/ipa
-
-      - name: Publicar en TestFlight (API key)
-        script: |
-          app-store-connect publish \
-            --path "$CM_BUILD_DIR/ipa/App.ipa" \
-            --primary-bundle-id "$IOS_BUNDLE_ID" \
-            --submit-to-testflight true \
-            --beta-group "Internal Testers"
-
-    artifacts:
-      - ipa/*.ipa
-      - App.xcarchive
+      - platforms/android/app/build/outputs/bundle/release/*.aab
+      - platforms/android/app/build/outputs/**/*.apk
+      - platforms/android/app/build/outputs/mapping/release/mapping.txt
+      - platforms/android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
