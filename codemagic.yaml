@@ -26,7 +26,7 @@ workflows:
           TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
           URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
           INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}"
+          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
@@ -35,17 +35,23 @@ workflows:
             exit 1
           fi
           export PATH="${NODE_BIN}:$PATH"
-          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
+          # Persistir para siguientes pasos (sin usar BASH_ENV)
+          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
+          export PATH="${NODE_BIN}:\$PATH"
+          EOF
       - name: Install Node deps
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
       - name: Build web
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
       - name: Capacitor sync
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npx cap sync android
       - name: Build Android Debug APK
         script: |
@@ -82,7 +88,7 @@ workflows:
           TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
           URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
           INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}"
+          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
@@ -91,17 +97,22 @@ workflows:
             exit 1
           fi
           export PATH="${NODE_BIN}:$PATH"
-          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
+          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
+          export PATH="${NODE_BIN}:\$PATH"
+          EOF
       - name: Install Node deps
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
       - name: Build web (prod)
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
       - name: Capacitor sync (android)
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npx cap sync android
       - name: Decode google-services.json (si aplica)
         script: |
@@ -161,7 +172,7 @@ workflows:
           TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
           URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
           INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}"
+          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
@@ -170,17 +181,22 @@ workflows:
             exit 1
           fi
           export PATH="${NODE_BIN}:$PATH"
-          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
+          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
+          export PATH="${NODE_BIN}:\$PATH"
+          EOF
       - name: Install Node deps
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
       - name: Build web
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
       - name: Capacitor sync
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npx cap sync ios
       - name: CocoaPods install
         script: |
@@ -256,7 +272,7 @@ workflows:
           TARBALL="node-v${NODE_VER}-${OS}-${ARCH}.tar.gz"
           URL="https://nodejs.org/dist/v${NODE_VER}/${TARBALL}"
           INSTALL_DIR="$HOME/tools"
-          mkdir -p "${INSTALL_DIR}"
+          mkdir -p "${INSTALL_DIR}" "$CM_BUILD_DIR"
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
@@ -265,17 +281,22 @@ workflows:
             exit 1
           fi
           export PATH="${NODE_BIN}:$PATH"
-          echo "export PATH='${NODE_BIN}':\$PATH" >> "$BASH_ENV"
           node -v
           npm -v
+          cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
+          export PATH="${NODE_BIN}:\$PATH"
+          EOF
       - name: Install Node deps
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
       - name: Build web (prod)
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
       - name: Capacitor sync
         script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npx cap sync ios
       - name: CocoaPods install
         script: |
