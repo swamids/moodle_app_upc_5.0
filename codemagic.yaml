@@ -148,22 +148,21 @@ workflows:
           > "$PRO"
           echo "✅ Escrito $PRO"
 
-          # 2) build-extras.gradle: Gradle fusiona este bloque con la app
+          # 2) build-extras.gradle: Gradle lo fusiona; se escribe vía printf (sin heredoc)
           EXTRAS="$AND_APP_DIR/build-extras.gradle"
-          cat > "$EXTRAS" <<'GRADLE'
-android {
-    buildTypes {
-        release {
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            ndk {
-                debugSymbolLevel 'SYMBOL_TABLE'
-            }
-        }
-    }
-}
-GRADLE
+          : > "$EXTRAS"
+          printf '%s\n' 'android {' >> "$EXTRAS"
+          printf '%s\n' '    buildTypes {' >> "$EXTRAS"
+          printf '%s\n' '        release {' >> "$EXTRAS"
+          printf '%s\n' '            minifyEnabled true' >> "$EXTRAS"
+          printf '%s\n' '            shrinkResources true' >> "$EXTRAS"
+          printf "%s\n" "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'" >> "$EXTRAS"
+          printf '%s\n' '            ndk {' >> "$EXTRAS"
+          printf "%s\n" "                debugSymbolLevel 'SYMBOL_TABLE'" >> "$EXTRAS"
+          printf '%s\n' '            }' >> "$EXTRAS"
+          printf '%s\n' '        }' >> "$EXTRAS"
+          printf '%s\n' '    }' >> "$EXTRAS"
+          printf '%s\n' '}' >> "$EXTRAS"
           echo "✅ Escrito $EXTRAS"
 
           # 3) Forzar R8 por compatibilidad
