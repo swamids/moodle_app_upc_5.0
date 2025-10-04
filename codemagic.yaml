@@ -7,7 +7,7 @@ workflows:
     max_build_duration: 60
     environment:
       groups:
-        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+        - keystore_group
       vars:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -30,33 +30,43 @@ workflows:
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          if [ ! -x "${NODE_BIN}/node" ]; then
-            echo "No se encontró binario de Node en ${NODE_BIN}"
-            exit 1
-          fi
+          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
           export PATH="${NODE_BIN}:$PATH"
           node -v
           npm -v
-          # Persistir para siguientes pasos (sin usar BASH_ENV)
           cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
           export PATH="${NODE_BIN}:\$PATH"
           EOF
+
       - name: Install Node deps
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
+
+      - name: Ensure Capacitor CLI (local devDependency)
+        script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
+          if [ ! -x "./node_modules/.bin/cap" ]; then
+            # Ajusta la versión si tu package.json especifica otra (5.x es común en Moodle App 5)
+            npm i -D @capacitor/cli@^5
+          fi
+          ./node_modules/.bin/cap --version
+
       - name: Build web
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
+
       - name: Capacitor sync
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npx cap sync android
+          ./node_modules/.bin/cap sync android
+
       - name: Build Android Debug APK
         script: |
           cd android
           ./gradlew assembleDebug
+
     artifacts:
       - android/app/build/outputs/**/*.apk
 
@@ -68,11 +78,11 @@ workflows:
     max_build_duration: 90
     environment:
       groups:
-        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+        - keystore_group
       vars:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
-        # GOOGLE_SERVICES_JSON_B64 (opcional) para com.upc.moodleapp
+        # GOOGLE_SERVICES_JSON_B64 (opcional)
     scripts:
       - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
         script: |
@@ -92,53 +102,63 @@ workflows:
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          if [ ! -x "${NODE_BIN}/node" ]; then
-            echo "No se encontró binario de Node en ${NODE_BIN}"
-            exit 1
-          fi
+          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
           export PATH="${NODE_BIN}:$PATH"
           node -v
           npm -v
           cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
           export PATH="${NODE_BIN}:\$PATH"
           EOF
+
       - name: Install Node deps
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
+
+      - name: Ensure Capacitor CLI (local devDependency)
+        script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
+          if [ ! -x "./node_modules/.bin/cap" ]; then
+            npm i -D @capacitor/cli@^5
+          fi
+          ./node_modules/.bin/cap --version
+
       - name: Build web (prod)
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
+
       - name: Capacitor sync (android)
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npx cap sync android
+          ./node_modules/.bin/cap sync android
+
       - name: Decode google-services.json (si aplica)
         script: |
           if [[ -n "$GOOGLE_SERVICES_JSON_B64" ]]; then
             echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
           fi
+
       - name: Gradle clean & bundleRelease (genera AAB, mapping y símbolos)
         script: |
           cd android
           ./gradlew clean
           ./gradlew --stacktrace --no-daemon bundleRelease
+
       - name: Recopilar mapping y símbolos nativos
         script: |
           mkdir -p $CM_BUILD_DIR/android_artifacts
-          # mapping.txt (R8/ProGuard)
           if [[ -f android/app/build/outputs/mapping/release/mapping.txt ]]; then
             cp -f android/app/build/outputs/mapping/release/mapping.txt $CM_BUILD_DIR/android_artifacts/
           else
             echo "⚠️  No se encontró mapping.txt. ¿Está activado minifyEnabled true en build.gradle?"
           fi
-          # native debug symbols
           if [[ -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip ]]; then
             cp -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip $CM_BUILD_DIR/android_artifacts/
           else
             echo "⚠️  No se encontró native-debug-symbols.zip. ¿Está configurado ndk.debugSymbolLevel 'SYMBOL_TABLE' en build.gradle?"
           fi
+
     artifacts:
       - android/app/build/outputs/**/*.aab
       - android_artifacts/**/*
@@ -176,32 +196,34 @@ workflows:
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          if [ ! -x "${NODE_BIN}/node" ]; then
-            echo "No se encontró binario de Node en ${NODE_BIN}"
-            exit 1
-          fi
+          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
           export PATH="${NODE_BIN}:$PATH"
           node -v
           npm -v
           cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
           export PATH="${NODE_BIN}:\$PATH"
           EOF
+
       - name: Install Node deps
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
+
       - name: Build web
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
+
       - name: Capacitor sync
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npx cap sync ios
+          ./node_modules/.bin/cap sync ios
+
       - name: CocoaPods install
         script: |
           cd ios/App
           pod install
+
       - name: Code signing automático con API key (fetch & keychain)
         script: |
           app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
@@ -210,10 +232,12 @@ workflows:
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
           app-store-connect keychain add-certificates
+
       - name: Xcode archive
         script: |
           cd ios/App
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
+
       - name: Export IPA
         script: |
           cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
@@ -232,6 +256,7 @@ workflows:
             -archivePath $CM_BUILD_DIR/App.xcarchive \
             -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
             -exportPath $CM_BUILD_DIR/ipa
+
       - name: Publicar en TestFlight (API key, sin publishing:)
         script: |
           app-store-connect publish \
@@ -239,6 +264,7 @@ workflows:
             --primary-bundle-id "$IOS_BUNDLE_ID" \
             --submit-to-testflight true \
             --beta-group "Internal Testers"
+
     artifacts:
       - ipa/*.ipa
       - App.xcarchive
@@ -276,32 +302,34 @@ workflows:
           echo "Descargando ${URL}"
           curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"
           NODE_BIN="${INSTALL_DIR}/node-v${NODE_VER}-${OS}-${ARCH}/bin"
-          if [ ! -x "${NODE_BIN}/node" ]; then
-            echo "No se encontró binario de Node en ${NODE_BIN}"
-            exit 1
-          fi
+          [ -x "${NODE_BIN}/node" ] || { echo "No se encontró Node en ${NODE_BIN}"; exit 1; }
           export PATH="${NODE_BIN}:$PATH"
           node -v
           npm -v
           cat > "$CM_BUILD_DIR/portable_node_env.sh" <<EOF
           export PATH="${NODE_BIN}:\$PATH"
           EOF
+
       - name: Install Node deps
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm ci
+
       - name: Build web (prod)
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           npm run build
+
       - name: Capacitor sync
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
-          npx cap sync ios
+          ./node_modules/.bin/cap sync ios
+
       - name: CocoaPods install
         script: |
           cd ios/App
           pod install
+
       - name: Automatic code signing con API key
         script: |
           app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
@@ -310,10 +338,12 @@ workflows:
           app-store-connect fetch-signing-files "$IOS_BUNDLE_ID" --type IOS_APP_STORE --create
           keychain initialize
           app-store-connect keychain add-certificates
+
       - name: Xcode archive
         script: |
           cd ios/App
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath $CM_BUILD_DIR/App.xcarchive archive CODE_SIGN_STYLE=Automatic
+
       - name: Export IPA (App Store)
         script: |
           cat > $CM_BUILD_DIR/exportOptions.plist <<'PLIST'
@@ -332,6 +362,7 @@ workflows:
             -archivePath $CM_BUILD_DIR/App.xcarchive \
             -exportOptionsPlist $CM_BUILD_DIR/exportOptions.plist \
             -exportPath $CM_BUILD_DIR/ipa
+
       - name: Publicar en TestFlight (API key)
         script: |
           app-store-connect publish \
@@ -339,6 +370,7 @@ workflows:
             --primary-bundle-id "$IOS_BUNDLE_ID" \
             --submit-to-testflight true \
             --beta-group "Internal Testers"
+
     artifacts:
       - ipa/*.ipa
       - App.xcarchive
