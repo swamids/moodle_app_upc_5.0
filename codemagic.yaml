@@ -7,7 +7,7 @@ workflows:
     max_build_duration: 60
     environment:
       groups:
-        - keystore_group
+        - keystore_group        # CM_KEYSTORE, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
       vars:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
@@ -47,10 +47,19 @@ workflows:
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
           if [ ! -x "./node_modules/.bin/cap" ]; then
-            # Ajusta la versión si tu package.json especifica otra (5.x es común en Moodle App 5)
             npm i -D @capacitor/cli@^5
           fi
           ./node_modules/.bin/cap --version
+
+      - name: Ensure @capacitor/android & add platform if missing
+        script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
+          if [ ! -d "node_modules/@capacitor/android" ]; then
+            npm i @capacitor/android@^5
+          fi
+          if [ ! -d "android" ]; then
+            ./node_modules/.bin/cap add android
+          fi
 
       - name: Build web
         script: |
@@ -82,7 +91,7 @@ workflows:
       vars:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
-        # GOOGLE_SERVICES_JSON_B64 (opcional)
+        # GOOGLE_SERVICES_JSON_B64 (opcional) para com.upc.moodleapp
     scripts:
       - name: Install portable Node 20.18.0 (requerido por Moodle App 5.0)
         script: |
@@ -123,6 +132,16 @@ workflows:
           fi
           ./node_modules/.bin/cap --version
 
+      - name: Ensure @capacitor/android & add platform if missing
+        script: |
+          [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
+          if [ ! -d "node_modules/@capacitor/android" ]; then
+            npm i @capacitor/android@^5
+          fi
+          if [ ! -d "android" ]; then
+            ./node_modules/.bin/cap add android
+          fi
+
       - name: Build web (prod)
         script: |
           [ -f "$CM_BUILD_DIR/portable_node_env.sh" ] && source "$CM_BUILD_DIR/portable_node_env.sh"
@@ -148,11 +167,13 @@ workflows:
       - name: Recopilar mapping y símbolos nativos
         script: |
           mkdir -p $CM_BUILD_DIR/android_artifacts
+          # mapping.txt (R8/ProGuard)
           if [[ -f android/app/build/outputs/mapping/release/mapping.txt ]]; then
             cp -f android/app/build/outputs/mapping/release/mapping.txt $CM_BUILD_DIR/android_artifacts/
           else
             echo "⚠️  No se encontró mapping.txt. ¿Está activado minifyEnabled true en build.gradle?"
           fi
+          # native debug symbols
           if [[ -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip ]]; then
             cp -f android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip $CM_BUILD_DIR/android_artifacts/
           else
