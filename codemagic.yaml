@@ -12,6 +12,22 @@ workflows:
         ANDROID_PACKAGE: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
+      - name: Set Node 20.18.0 (requerido por Moodle App 5.0)
+        script: |
+          export NVM_DIR="$HOME/.nvm"
+          # shellcheck source=/dev/null
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm install 20.18.0
+          nvm alias default 20.18.0
+          nvm use 20.18.0
+          node -v
+          npm -v
+          # Persistir en siguientes pasos
+          {
+            echo 'export NVM_DIR="$HOME/.nvm"'
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
+            echo 'nvm use 20.18.0 >/dev/null'
+          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -42,6 +58,22 @@ workflows:
         BRAND_COLOR: "#C8102E"
         # GOOGLE_SERVICES_JSON_B64 (opcional) para com.upc.moodleapp
     scripts:
+      - name: Set Node 20.18.0 (requerido por Moodle App 5.0)
+        script: |
+          export NVM_DIR="$HOME/.nvm"
+          # shellcheck source=/dev/null
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm install 20.18.0
+          nvm alias default 20.18.0
+          nvm use 20.18.0
+          node -v
+          npm -v
+          # Persistir en siguientes pasos
+          {
+            echo 'export NVM_DIR="$HOME/.nvm"'
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
+            echo 'nvm use 20.18.0 >/dev/null'
+          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -90,11 +122,26 @@ workflows:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY
+        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY (.p8)
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
+      - name: Set Node 20.18.0 (alineado con app web)
+        script: |
+          export NVM_DIR="$HOME/.nvm"
+          # shellcheck source=/dev/null
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm install 20.18.0
+          nvm alias default 20.18.0
+          nvm use 20.18.0
+          node -v
+          npm -v
+          {
+            echo 'export NVM_DIR="$HOME/.nvm"'
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
+            echo 'nvm use 20.18.0 >/dev/null'
+          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
@@ -110,7 +157,6 @@ workflows:
           pod install
       - name: Code signing automático con API key (fetch & keychain)
         script: |
-          # Usa las variables del grupo apple_api_key_group
           app-store-connect configure --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
                                       --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
                                       --private-key "$APP_STORE_CONNECT_PRIVATE_KEY"
@@ -141,7 +187,6 @@ workflows:
             -exportPath $CM_BUILD_DIR/ipa
       - name: Publicar en TestFlight (API key, sin publishing:)
         script: |
-          # Sube el IPA a App Store Connect usando las mismas credenciales
           app-store-connect publish \
             --path "$CM_BUILD_DIR/ipa/App.ipa" \
             --primary-bundle-id "$IOS_BUNDLE_ID" \
@@ -161,11 +206,26 @@ workflows:
       xcode: latest
       cocoapods: default
       groups:
-        - apple_api_key_group   # APP_STORE_CONNECT_ISSUER_ID / KEY_IDENTIFIER / PRIVATE_KEY
+        - apple_api_key_group
       vars:
         IOS_BUNDLE_ID: "com.upc.moodleapp"
         BRAND_COLOR: "#C8102E"
     scripts:
+      - name: Set Node 20.18.0 (alineado con app web)
+        script: |
+          export NVM_DIR="$HOME/.nvm"
+          # shellcheck source=/dev/null
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm install 20.18.0
+          nvm alias default 20.18.0
+          nvm use 20.18.0
+          node -v
+          npm -v
+          {
+            echo 'export NVM_DIR="$HOME/.nvm"'
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
+            echo 'nvm use 20.18.0 >/dev/null'
+          } >> "$BASH_ENV"
       - name: Install Node deps
         script: |
           npm ci
