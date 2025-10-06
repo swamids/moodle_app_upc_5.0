@@ -8,9 +8,9 @@ workflows:
     environment:
       node: 20.18.0
       java: 17
-      vars:
-        PACKAGE_NAME: "com.upc.moodleapp"
-        APP_NAME: "Moodle UPC"
+    vars:
+      PACKAGE_NAME: "com.upc.moodleapp"
+      APP_NAME: "Moodle UPC"
     scripts:
       - name: Instalar dependencias
         script: |
@@ -53,10 +53,8 @@ workflows:
 
 
   # -----------------------------------------------------------------
-  # RELEASE: Firma con keystore y genera AAB para Play
-  # + mapping.txt (R8/ProGuard) + native-debug-symbols.zip
-  #
-  # Requiere grupo 'keystore_group':
+  # RELEASE HOTFIX: AAB sin minify/shrink para evitar crash en producción
+  # Requiere en el grupo 'keystore_group':
   #  - CM_KEYSTORE (base64 del .keystore/.jks)
   #  - CM_KEYSTORE_PASSWORD
   #  - CM_KEY_ALIAS
@@ -64,16 +62,16 @@ workflows:
   #  - GOOGLE_SERVICES_JSON_B64 (base64 del google-services.json de com.upc.moodleapp)
   # -----------------------------------------------------------------
   build-android-release:
-    name: Moodle App Build for Android (RELEASE AAB firmado + mapping + símbolos)
+    name: Moodle App Build for Android (RELEASE AAB HOTFIX sin minify/shrink)
     max_build_duration: 60
     environment:
       node: 20.18.0
       java: 17
-      groups:
-        - keystore_group
-      vars:
-        PACKAGE_NAME: "com.upc.moodleapp"
-        APP_NAME: "Moodle UPC"
+    groups:
+      - keystore_group
+    vars:
+      PACKAGE_NAME: "com.upc.moodleapp"
+      APP_NAME: "Moodle UPC"
 
     scripts:
       - name: Instalar dependencias
@@ -128,46 +126,26 @@ workflows:
             exit 1
           fi
 
-      - name: Habilitar R8/ProGuard y símbolos nativos (sin editar build.gradle)
+      - name: HOTFIX: Desactivar minify/shrink (build-extras.gradle)
         script: |
           set -e
           AND_APP_DIR="platforms/android/app"
           mkdir -p "$AND_APP_DIR"
 
-          # 1) Reglas ProGuard seguras para Cordova/Ionic + Firebase/Play Services
-          PRO="$AND_APP_DIR/proguard-rules.pro"
-          printf '%s\n' \
-            '-keep class org.apache.cordova.** { *; }' \
-            '-keep class com.getcapacitor.** { *; }' \
-            '-keep class com.ionicframework.** { *; }' \
-            '-keep class io.ionic.** { *; }' \
-            '-keep class com.google.firebase.** { *; }' \
-            '-keep class com.google.android.gms.** { *; }' \
-            '-dontwarn com.google.firebase.**' \
-            '-dontwarn com.google.android.gms.**' \
-          > "$PRO"
-          echo "✅ Escrito $PRO"
-
-          # 2) build-extras.gradle: Gradle lo fusiona; se escribe vía printf (sin heredoc)
           EXTRAS="$AND_APP_DIR/build-extras.gradle"
           : > "$EXTRAS"
           printf '%s\n' 'android {' >> "$EXTRAS"
           printf '%s\n' '    buildTypes {' >> "$EXTRAS"
           printf '%s\n' '        release {' >> "$EXTRAS"
-          printf '%s\n' '            minifyEnabled true' >> "$EXTRAS"
-          printf '%s\n' '            shrinkResources true' >> "$EXTRAS"
-          printf "%s\n" "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'" >> "$EXTRAS"
-          printf '%s\n' '            ndk {' >> "$EXTRAS"
-          printf "%s\n" "                debugSymbolLevel 'SYMBOL_TABLE'" >> "$EXTRAS"
-          printf '%s\n' '            }' >> "$EXTRAS"
+          printf '%s\n' '            minifyEnabled false' >> "$EXTRAS"
+          printf '%s\n' '            shrinkResources false' >> "$EXTRAS"
           printf '%s\n' '        }' >> "$EXTRAS"
           printf '%s\n' '    }' >> "$EXTRAS"
           printf '%s\n' '}' >> "$EXTRAS"
-          echo "✅ Escrito $EXTRAS"
+          echo "✅ Escrito $EXTRAS (minify/shrink desactivados)"
 
-          # 3) Forzar R8 por compatibilidad
-          echo -e '\n# Ensure R8\nandroid.enableR8=true\nandroid.enableR8.libraries=true' >> platforms/android/gradle.properties || true
-          echo "✅ R8 forzado en gradle.properties"
+          # (Opcional) asegúrate de NO forzar R8 aquí:
+          sed -i.bak '/android.enableR8/d' platforms/android/gradle.properties 2>/dev/null || true
 
       - name: Sanity check del keystore (valida storepass/alias/keypass y detecta JKS/PKCS12)
         script: |
@@ -182,7 +160,7 @@ workflows:
           ( printf "%s" "$CM_KEYSTORE" | base64 -D        > /tmp/release.keystore )
 
           if [ ! -s /tmp/release.keystore ]; then
-            echo "❌ Keystore vacío o corrupto"; exit 1;
+            echo "❌ Keystore vacío o corrupto"; exit 1
           fi
 
           echo "▶ Validando STOREPASS…"
@@ -222,7 +200,7 @@ workflows:
           EOF
           sed -E 's/"(storePassword|password)":"[^"]+"/"***"/g' /tmp/build.json
 
-      - name: Build RELEASE AAB firmado (genera mapping y símbolos nativos)
+      - name: Build RELEASE AAB firmado (HOTFIX sin minify/shrink)
         script: |
           set -e
           ionic cordova build android --prod --release --buildConfig=/tmp/build.json -- --packageType=bundle
@@ -230,21 +208,8 @@ workflows:
           echo "▶ Artefactos generados:"
           find platforms/android/app/build/outputs -type f | sed 's#^#  - #'
 
-          # Verificaciones de mapping y símbolos
           test -f platforms/android/app/build/outputs/bundle/release/app-release.aab || { echo "❌ No se generó el AAB release"; exit 1; }
-          if [ -f platforms/android/app/build/outputs/mapping/release/mapping.txt ]; then
-            echo "✅ mapping.txt encontrado"
-          else
-            echo "⚠️ No se encontró mapping.txt (revisa minifyEnabled/proguard)."
-          fi
-          if [ -f platforms/android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip ]; then
-            echo "✅ native-debug-symbols.zip encontrado"
-          else
-            echo "⚠️ No se encontró native-debug-symbols.zip (debugSymbolLevel)."
-          fi
 
     artifacts:
       - platforms/android/app/build/outputs/bundle/release/*.aab
       - platforms/android/app/build/outputs/**/*.apk
-      - platforms/android/app/build/outputs/mapping/release/mapping.txt
-      - platforms/android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
